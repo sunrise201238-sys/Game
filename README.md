@@ -29,7 +29,7 @@ i18n/     – Localized UI strings (en-US, zh-TW)
 - npm 10 (install the latest npm 10.x before bootstrapping workspaces)
 
 ```bash
-nvm use || nvm install
+nvm use 18.20.3 || nvm install 18.20.3
 npm i -g npm@10
 ```
 
@@ -105,7 +105,7 @@ This command builds shared types, server, and client artifacts.
 Use the following sequence to ensure the workspace installs, builds, and boots locally (mirrors Render expectations):
 
 ```bash
-nvm use || nvm install
+nvm use 18.20.3 || nvm install 18.20.3
 npm i -g npm@10
 npm run bootstrap
 npm run build
