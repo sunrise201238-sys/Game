@@ -25,11 +25,11 @@ i18n/     – Localized UI strings (en-US, zh-TW)
 
 ## Prerequisites & Environment Setup
 
-- Node.js 18.20.x (the repo includes an `.nvmrc` targeting 18.20.3)
+- Node.js 20 LTS (the repo includes an `.nvmrc` targeting 20)
 - npm 10 (install the latest npm 10.x before bootstrapping workspaces)
 
 ```bash
-nvm use 18.20.3 || nvm install 18.20.3
+nvm use 20 || nvm install 20
 npm i -g npm@10
 ```
 
@@ -105,7 +105,7 @@ This command builds shared types, server, and client artifacts.
 Use the following sequence to ensure the workspace installs, builds, and boots locally (mirrors Render expectations):
 
 ```bash
-nvm use 18.20.3 || nvm install 18.20.3
+nvm use 20 || nvm install 20
 npm i -g npm@10
 npm run bootstrap
 npm run build
@@ -121,41 +121,40 @@ With the server running, open two browser tabs pointed at the client build (or d
 
 ## Render Deployment
 
-### Client (Static Site)
-
-1. Create a new **Static Site** on Render.
-2. Set the build command:
-
-   ```bash
-   npm config set registry https://registry.npmjs.org/ && \
-   npm run build --workspace client
-   ```
-3. Set the publish directory: `client/dist`.
-4. Environment variables:
-   - `WS_URL=wss://<your-server-host>` (Render upgrades static-site requests appropriately).
-   - `VITE_LANGUAGE_DEFAULT=en-US` (choose `zh-TW` to default to Traditional Chinese).
-
 ### Server (Web Service)
 
 1. Create a **Web Service** on Render.
 2. Set the build command:
 
    ```bash
-   npm i -g npm@10 && \
-   npm config set registry https://registry.npmjs.org/ && \
-   npm run bootstrap && \
+   node -v && npm -v && \
+   npm ci --registry=https://registry.npmjs.org/ --no-audit --no-fund || \
+   npm install --registry=https://registry.npmjs.org/ --no-audit --no-fund && \
    npm run build
    ```
 3. Set the start command: `npm run start:server`.
 4. Required environment variables:
-   - `PORT` (provided by Render).
    - `SECRET_SALT=<secure-random-string>`.
-   - `PLANNING_MS=<commit-window-ms>`.
-   - `REVEAL_MS=<reveal-window-ms>`.
-   - `ALLOW_ORIGINS=https://<your-client-host>`.
-   - `ANALYTICS=off|minimal`.
+   - `PLANNING_MS=10000`.
+   - `REVEAL_MS=1500`.
+   - `ALLOW_ORIGINS=https://<your-client>.onrender.com`.
+   - `ANALYTICS=off`.
+   - `PORT` is provided automatically by Render.
 
-The server automatically listens on the injected `PORT`.
+### Client (Static Site)
+
+1. Create a new **Static Site** on Render.
+2. Set the build command:
+
+   ```bash
+   npm ci --registry=https://registry.npmjs.org/ --no-audit --no-fund || \
+   npm install --registry=https://registry.npmjs.org/ --no-audit --no-fund && \
+   npm run build --workspace client
+   ```
+3. Set the publish directory: `client/dist`.
+4. Environment variables:
+   - `WS_URL=wss://<your-server>.onrender.com`.
+   - `VITE_LANGUAGE_DEFAULT=zh-TW` (switch to `en-US` if you prefer English by default).
 
 ## GitHub Actions
 

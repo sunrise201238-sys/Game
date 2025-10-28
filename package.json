@@ -14,7 +14,7 @@
     "format": "npm run format --workspace=client && npm run format --workspace=server"
   },
   "engines": {
-    "node": ">=18",
+    "node": ">=20",
     "npm": ">=9"
   },
   "packageManager": "npm@10"
