@@ -88,7 +88,9 @@ setInterval(() => {
   countdownEl.textContent = (next / 1000).toFixed(1);
 }, 100);
 
-const WS_URL = import.meta.env.VITE_WS_URL ?? `ws://${window.location.hostname}:3001`;
+const configuredWsUrl =
+  import.meta.env.VITE_WS_URL ?? (import.meta.env as Record<string, string | undefined>).WS_URL;
+const WS_URL = configuredWsUrl && configuredWsUrl.length > 0 ? configuredWsUrl : `ws://${window.location.hostname}:3001`;
 
 const socket = new GameSocket(
   WS_URL + window.location.search,

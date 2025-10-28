@@ -23,15 +23,20 @@ i18n/     – Localized UI strings (en-US, zh-TW)
 - Optional in-memory analytics (`ANALYTICS=minimal`) exposed at `/admin/metrics` alongside `/healthz` for Render probes.
 - Shared schemas/constants that keep client and server in lockstep (maps, units, physics constants, message envelopes).
 
-## Prerequisites
+## Prerequisites & Environment Setup
 
-- Node.js 18+
-- npm 9+
+- Node.js 18.20.x (the repo includes an `.nvmrc` for convenience)
+- npm 10 (install the latest npm before bootstrapping workspaces)
+
+```bash
+nvm use || nvm install
+npm i -g npm@latest
+```
 
 ## Installing Dependencies
 
 ```bash
-npm install --workspaces
+npm run bootstrap
 ```
 
 ## Local Development
@@ -76,7 +81,7 @@ Key environment variables for the client (set via Vite `VITE_*` prefix or `.env`
 
 | Name                  | Default                     | Description                                       |
 | --------------------- | --------------------------- | ------------------------------------------------- |
-| `VITE_WS_URL`         | `ws://localhost:3001`       | WebSocket endpoint (append `?mode=pve` to force bot)|
+| `WS_URL` / `VITE_WS_URL` | `ws://localhost:3001`    | WebSocket endpoint (append `?mode=pve` to force bot) |
 | `VITE_LANGUAGE_DEFAULT` | *(browser locale)*        | Preferred language (`en-US` or `zh-TW`)           |
 | `VITE_COMMIT_SALT`    | `client-salt`               | Salt applied to commit hashes (must match server `SECRET_SALT`) |
 
@@ -93,30 +98,45 @@ This command builds shared types, server, and client artifacts.
 - Client output: `client/dist/` (static site suitable for CDN/Render Static Site)
 - Server output: `server/dist/` (Node.js bundle)
 
+## Local Verification Checklist
+
+Use the following sequence to ensure the workspace installs, builds, and boots locally (mirrors Render expectations):
+
+```bash
+nvm use || nvm install
+npm i -g npm@latest
+npm run bootstrap
+npm run build
+npm run start:server
+```
+
+With the server running, open two browser tabs pointed at the client build (or dev server) and confirm they can complete a full match end-to-end.
+
 ## Render Deployment
 
 ### Client (Static Site)
 
 1. Create a new **Static Site** on Render.
-2. Set the build command: `npm install && npm run build --workspace=shared && npm run build --workspace=client`.
+2. Set the build command: `npm run build --workspace client`.
 3. Set the publish directory: `client/dist`.
 4. Environment variables:
-   - `VITE_WS_URL=https://<your-server-host>` (Render automatically upgrades to `wss://` for static sites).
-   - `VITE_LANGUAGE_DEFAULT=en-US` (optional).
-   - `VITE_COMMIT_SALT=<random-string>`.
+   - `WS_URL=wss://<your-server-host>` (Render upgrades static-site requests appropriately).
+   - `VITE_LANGUAGE_DEFAULT=en-US` (choose `zh-TW` to default to Traditional Chinese).
 
 ### Server (Web Service)
 
 1. Create a **Web Service** on Render.
-2. Set the build command: `npm install && npm run build --workspace=shared && npm run build --workspace=server`.
-3. Set the start command: `node server/dist/index.js`.
+2. Set the build command: `npm i -g npm@latest && npm run bootstrap && npm run build`.
+3. Set the start command: `npm run start:server`.
 4. Required environment variables:
-   - `SECRET_SALT=<secure-random-string>`
-   - `ALLOW_ORIGINS=https://<your-client-host>`
-   - `ANALYTICS=minimal` (optional; enables `/admin/metrics`).
-   - `PLANNING_MS`, `REVEAL_MS` as needed.
+   - `PORT` (provided by Render).
+   - `SECRET_SALT=<secure-random-string>`.
+   - `PLANNING_MS=<commit-window-ms>`.
+   - `REVEAL_MS=<reveal-window-ms>`.
+   - `ALLOW_ORIGINS=https://<your-client-host>`.
+   - `ANALYTICS=off|minimal`.
 
-Render automatically injects `PORT`; the server listens on that value.
+The server automatically listens on the injected `PORT`.
 
 ## GitHub Actions
 
