@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "moduleResolution": "node16",
+    "module": "node16",
+    "lib": ["ES2021"],
+    "types": ["node"],
+    "noEmitOnError": true
+  },
+  "include": ["src"]
+}
