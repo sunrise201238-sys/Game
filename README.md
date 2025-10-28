@@ -25,15 +25,17 @@ i18n/     – Localized UI strings (en-US, zh-TW)
 
 ## Prerequisites & Environment Setup
 
-- Node.js 18.20.x (the repo includes an `.nvmrc` for convenience)
-- npm 10 (install the latest npm before bootstrapping workspaces)
+- Node.js 18.20.x (the repo includes an `.nvmrc` targeting 18.20.3)
+- npm 10 (install the latest npm 10.x before bootstrapping workspaces)
 
 ```bash
 nvm use || nvm install
-npm i -g npm@latest
+npm i -g npm@10
 ```
 
 ## Installing Dependencies
+
+> **Note:** The repository ships with a root `.npmrc` that pins the public npm registry and disables funding/audit prompts so `npm ci --workspaces` behaves consistently across CI and Render.
 
 ```bash
 npm run bootstrap
@@ -104,20 +106,30 @@ Use the following sequence to ensure the workspace installs, builds, and boots l
 
 ```bash
 nvm use || nvm install
-npm i -g npm@latest
+npm i -g npm@10
 npm run bootstrap
 npm run build
 npm run start:server
 ```
 
-With the server running, open two browser tabs pointed at the client build (or dev server) and confirm they can complete a full match end-to-end.
+With the server running, open two browser tabs pointed at the client build (or dev server) and confirm:
+
+- Matchmaking proceeds through commit → reveal → client result hash submission → `ROUND_RESULT` playback.
+- Cursor rollover never skips turns after unit deaths.
+- Language toggle persists between reloads.
+- Graves remain unobtrusive and stack as `×N` when overlapping.
 
 ## Render Deployment
 
 ### Client (Static Site)
 
 1. Create a new **Static Site** on Render.
-2. Set the build command: `npm run build --workspace client`.
+2. Set the build command:
+
+   ```bash
+   npm config set registry https://registry.npmjs.org/ && \
+   npm run build --workspace client
+   ```
 3. Set the publish directory: `client/dist`.
 4. Environment variables:
    - `WS_URL=wss://<your-server-host>` (Render upgrades static-site requests appropriately).
@@ -126,7 +138,14 @@ With the server running, open two browser tabs pointed at the client build (or d
 ### Server (Web Service)
 
 1. Create a **Web Service** on Render.
-2. Set the build command: `npm i -g npm@latest && npm run bootstrap && npm run build`.
+2. Set the build command:
+
+   ```bash
+   npm i -g npm@10 && \
+   npm config set registry https://registry.npmjs.org/ && \
+   npm run bootstrap && \
+   npm run build
+   ```
 3. Set the start command: `npm run start:server`.
 4. Required environment variables:
    - `PORT` (provided by Render).
