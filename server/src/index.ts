@@ -4,12 +4,12 @@ import { randomUUID } from 'node:crypto';
 import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 
-import { loadConfig } from './config.js';
-import { createAnalyticsStore } from './analytics.js';
-import { loadResources } from './resources.js';
-import { MatchController } from './match.js';
+import { loadConfig } from './config';
+import { createAnalyticsStore } from './analytics';
+import { loadResources } from './resources';
+import { MatchController } from './match';
 import type { ClientMessage, PlayerRole } from '@slingshot/shared';
-import type { MatchContext } from './types.js';
+import type { MatchContext } from './types';
 
 const BOT_WAIT_MS = 4000;
 

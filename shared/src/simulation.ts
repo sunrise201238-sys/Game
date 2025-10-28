@@ -1,17 +1,17 @@
 import type {
   AoeZoneState,
-  MapSchema,
   MatchSummary,
-  MinimalSnapshot,
   PlayerRole,
   ProjectileState,
   RoundDiff,
   UnitAction,
   UnitState,
   Vector2,
-} from './messages.js';
-import type { UnitSchema } from './game-data.js';
-import { PHYSICS_CONSTANTS, ROUND_CONFIG } from './constants.js';
+} from './messages';
+import type { UnitSchema } from './game-data';
+import { PHYSICS_CONSTANTS, ROUND_CONFIG } from './constants';
+import { createIdFactory, sumHp } from './utils';
+import type { MapSchema, MinimalSnapshot, RuntimeAoe } from './types';
 
 const UNIT_RADIUS = 0.8;
 const MAX_SIMULATION_MS = 2000;
@@ -32,8 +32,6 @@ export interface DotStatus {
   remaining: number;
   dmg: number;
 }
-
-export interface RuntimeAoe extends AoeZoneState {}
 
 export interface MatchRuntimeState {
   round: number;
@@ -496,8 +494,10 @@ function resolveProjectile(
   owner: PlayerRole,
   opponentRole: PlayerRole,
   diff: RoundDiff,
+  idFactory?: () => string,
 ): ProjectileState | null {
   if (!spec) return null;
+  const makeId = idFactory ?? (() => `${unit.id}-projectile-${Date.now()}`);
   const direction = normalizeVector(impulse);
   if (direction.x === 0 && direction.y === 0) {
     return null;
@@ -526,7 +526,7 @@ function resolveProjectile(
           enemy.velocity.y += dir.y * PHYSICS_CONSTANTS.enemyKnockbackScale;
         }
         return {
-          id: `${unit.id}-projectile-${Date.now()}`,
+          id: makeId(),
           owner,
           position: pos,
           velocity: { x: direction.x * step, y: direction.y * step },
@@ -538,7 +538,7 @@ function resolveProjectile(
     }
   }
   return {
-    id: `${unit.id}-projectile-${Date.now()}`,
+    id: makeId(),
     owner,
     position: pos,
     velocity: { x: direction.x * step, y: direction.y * step },
@@ -550,6 +550,7 @@ function placeAoeZone(
   spec: NonNullable<UnitSchema['aoe']>,
   impulse: Vector2,
   owner: PlayerRole,
+  idFactory?: () => string,
 ): RuntimeAoe | null {
   const direction = normalizeVector(impulse);
   const force = magnitude(impulse);
@@ -559,7 +560,7 @@ function placeAoeZone(
     y: unit.position.y + direction.y * distance,
   };
   return {
-    id: `${unit.id}-aoe-${Date.now()}`,
+    id: idFactory ? idFactory() : `${unit.id}-aoe-${Date.now()}`,
     ttl: spec.ttlRounds,
     position,
     radius: spec.size / 2,

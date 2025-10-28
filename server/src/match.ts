@@ -25,9 +25,9 @@ import {
   type MatchSummary,
 } from '@slingshot/shared';
 
-import type { AnalyticsStore } from './analytics.js';
-import type { MatchContext, PlayerContext } from './types.js';
-import type { ServerConfig } from './config.js';
+import type { AnalyticsStore } from './analytics';
+import type { MatchContext, PlayerContext } from './types';
+import type { ServerConfig } from './config';
 
 interface PlayerInit {
   id: string;

@@ -1,4 +1,6 @@
-export type PlayerRole = "you" | "opponent";
+import type { MinimalSnapshot } from './types';
+
+export type PlayerRole = 'you' | 'opponent';
 
 export interface JoinQueueMessage {
   type: "JOIN_QUEUE";
@@ -139,14 +141,6 @@ export interface Vector2 {
   y: number;
 }
 
-export interface MinimalSnapshot {
-  round: number;
-  mapId: string;
-  you: PlayerSnapshot;
-  opponent: PlayerSnapshot;
-  aoeZones: AoeZoneState[];
-}
-
 export interface AoeZoneState {
   id: string;
   ttl: number;
@@ -180,7 +174,9 @@ export interface ProjectileState {
 
 export interface MatchSummary {
   rounds: number;
-  winner: PlayerRole | "draw";
+  winner: PlayerRole | 'draw';
   youRemaining: number;
   oppRemaining: number;
 }
+
+export { MapSchema } from './types';
