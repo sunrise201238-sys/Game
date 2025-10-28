@@ -1,0 +1,16 @@
+{
+  "app.title": "回合彈射對決",
+  "app.language.en": "英文",
+  "app.language.zh": "繁體中文",
+  "app.toggle": "切換語言",
+  "ui.connecting": "連線中...",
+  "ui.ready": "拖曳瞄準後放開即可發射",
+  "ui.waiting": "等待對手",
+  "ui.finished": "對戰結束 — 勝者：{winner}",
+  "ui.round": "第 {round} 回合",
+  "ui.playBot": "與電腦對戰",
+  "unit.soldier": "士兵",
+  "unit.archer": "弓手",
+  "unit.mage": "法師",
+  "map.grassy-field": "綠野戰場"
+}

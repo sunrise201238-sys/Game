@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "moduleResolution": "bundler",
+    "types": ["vite/client"],
+    "allowJs": false
+  },
+  "include": ["src", "vite.config.ts"],
+  "references": [{ "path": "../shared" }]
+}

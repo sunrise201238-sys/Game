@@ -1,0 +1,14 @@
+{
+  "name": "slingshot-strategy-monorepo",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server",
+    "shared"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=shared && npm run build --workspace=server && npm run build --workspace=client",
+    "lint": "npm run lint --workspace=client && npm run lint --workspace=server",
+    "format": "npm run format --workspace=client && npm run format --workspace=server"
+  }
+}

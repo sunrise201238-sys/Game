@@ -1,0 +1,45 @@
+[
+  {
+    "id": "soldier",
+    "nameKey": "unit.soldier",
+    "hp": 120,
+    "collideDmg": 30,
+    "knockback": 0.7,
+    "selfRecoil": 0.3,
+    "moveFriction": 0.92
+  },
+  {
+    "id": "archer",
+    "nameKey": "unit.archer",
+    "hp": 80,
+    "collideDmg": 16,
+    "knockback": 0.4,
+    "selfRecoil": 0.2,
+    "moveFriction": 0.9,
+    "projectile": {
+      "dmg": 22,
+      "baseRange": 10,
+      "rangeGainPerForce": 2,
+      "passFriend": true,
+      "stopOn": { "enemy": true, "wall": true, "out": true },
+      "pushbackSmall": true
+    }
+  },
+  {
+    "id": "mage",
+    "nameKey": "unit.mage",
+    "hp": 70,
+    "collideDmg": 14,
+    "knockback": 0.3,
+    "selfRecoil": 0.25,
+    "moveFriction": 0.88,
+    "aoe": {
+      "shape": "circle",
+      "size": 4,
+      "ttlRounds": 4,
+      "dot": { "dmg": 8, "durationRounds": 3, "stack": false, "refresh": true },
+      "maxPlaceDist": 8,
+      "scalesWithForce": true
+    }
+  }
+]

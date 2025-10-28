@@ -1,0 +1,16 @@
+{
+  "app.title": "Round Slingshot Duel",
+  "app.language.en": "English",
+  "app.language.zh": "Traditional Chinese",
+  "app.toggle": "Switch Language",
+  "ui.connecting": "Connecting to server...",
+  "ui.ready": "Drag to aim and release to fire",
+  "ui.waiting": "Waiting for opponent",
+  "ui.finished": "Match finished — winner: {winner}",
+  "ui.round": "Round {round}",
+  "ui.playBot": "Play vs Bot",
+  "unit.soldier": "Soldier",
+  "unit.archer": "Archer",
+  "unit.mage": "Mage",
+  "map.grassy-field": "Grassy Field"
+}

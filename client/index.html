@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Round Slingshot Duel</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="app-header">
+        <h1 id="title"></h1>
+        <button id="language-toggle" type="button"></button>
+        <a id="bot-link" href="#" class="bot-link"></a>
+      </header>
+      <main>
+        <section class="hud">
+          <div class="status" id="status"></div>
+          <div class="round" id="round"></div>
+          <div class="power-bar">
+            <div class="fill" id="power-fill"></div>
+          </div>
+          <div class="countdown" id="countdown"></div>
+        </section>
+        <canvas id="battle-canvas" width="960" height="540"></canvas>
+      </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
