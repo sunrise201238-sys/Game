@@ -1,6 +1,6 @@
 import maps from '../maps/maps.json';
 import units from '../units/units.json';
-import type { MapSchema, UnitSchema } from 'aslingshot/shared';
+import type { MapSchema, UnitSchema } from '@slingshot/shared';
 
 export const MAPS: MapSchema[] = maps as MapSchema[];
 export const UNITS: UnitSchema[] = units as UnitSchema[];

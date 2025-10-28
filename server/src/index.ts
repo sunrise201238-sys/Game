@@ -8,7 +8,7 @@ import { loadConfig } from './config.js';
 import { createAnalyticsStore } from './analytics.js';
 import { loadResources } from './resources.js';
 import { MatchController } from './match.js';
-import type { ClientMessage, PlayerRole } from 'aslingshot/shared';
+import type { ClientMessage, PlayerRole } from '@slingshot/shared';
 import type { MatchContext } from './types.js';
 
 const BOT_WAIT_MS = 4000;

@@ -11,7 +11,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css,html}\""
   },
   "dependencies": {
-    "aslingshot/shared": "workspace:*"
+    "@slingshot/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.10.5",

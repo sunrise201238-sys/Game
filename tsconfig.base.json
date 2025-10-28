@@ -9,8 +9,8 @@
     "outDir": "dist",
     "baseUrl": ".",
     "paths": {
-      "aslingshot/shared": ["shared/src"],
-      "aslingshot/shared/*": ["shared/src/*"],
+      "@slingshot/shared": ["shared/src"],
+      "@slingshot/shared/*": ["shared/src/*"],
       "@i18n/*": ["i18n/*"]
     }
   }

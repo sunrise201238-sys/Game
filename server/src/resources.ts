@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { GameResources } from './types.js';
-import type { MapSchema, UnitSchema } from 'aslingshot/shared';
+import type { MapSchema, UnitSchema } from '@slingshot/shared';
 
 async function readJson<T>(filePath: string): Promise<T> {
   const content = await readFile(filePath, 'utf-8');

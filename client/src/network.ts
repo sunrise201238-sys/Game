@@ -1,4 +1,4 @@
-import type { ClientMessage, ServerMessage } from 'aslingshot/shared/messages';
+import type { ClientMessage, ServerMessage } from '@slingshot/shared/messages';
 
 type MessageHandler = (message: ServerMessage) => void;
 
