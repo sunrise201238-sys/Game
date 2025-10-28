@@ -2,8 +2,8 @@ import { I18n } from './i18n';
 import { GameStateManager } from './state';
 import { Renderer } from './render';
 import { GameSocket } from './network';
-import { serializeCommitPayload } from '@shared/commit';
-import type { ClientMessage } from '@shared/messages';
+import { serializeCommitPayload } from 'aslingshot/shared/commit';
+import type { ClientMessage } from 'aslingshot/shared/messages';
 
 const PLAYER_ID_KEY = 'slingshot.playerId';
 const COMMIT_SALT = import.meta.env.VITE_COMMIT_SALT ?? 'client-salt';

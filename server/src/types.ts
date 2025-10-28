@@ -8,8 +8,8 @@ import type {
   RoundDiff,
   UnitAction,
   UnitSchema,
-} from '@slingshot/shared';
-import type { MatchRuntimeState, RuntimeUnit, SimulationContext } from '@slingshot/shared';
+} from 'aslingshot/shared';
+import type { MatchRuntimeState, RuntimeUnit, SimulationContext } from 'aslingshot/shared';
 
 export interface PlayerContext {
   id: string;

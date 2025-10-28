@@ -1,5 +1,5 @@
-import type { PlayerRole, UnitState } from '@slingshot/shared';
-import type { MatchSummary } from '@slingshot/shared';
+import type { PlayerRole, UnitState } from 'aslingshot/shared';
+import type { MatchSummary } from 'aslingshot/shared';
 
 interface MapCounters {
   [key: string]: number;

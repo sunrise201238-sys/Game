@@ -2,18 +2,15 @@
   "compilerOptions": {
     "target": "ES2020",
     "module": "ESNext",
-    "moduleResolution": "Node",
-    "lib": ["DOM", "ES2020"],
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "Bundler",
     "strict": true,
     "skipLibCheck": true,
-    "resolveJsonModule": true,
+    "declaration": true,
     "outDir": "dist",
-    "baseUrl": "./",
+    "baseUrl": ".",
     "paths": {
-      "@shared/*": ["shared/src/*"],
-      "@slingshot/shared": ["shared/src/index.ts"],
+      "aslingshot/shared": ["shared/src"],
+      "aslingshot/shared/*": ["shared/src/*"],
       "@i18n/*": ["i18n/*"]
     }
   }

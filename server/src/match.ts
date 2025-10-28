@@ -23,7 +23,7 @@ import {
   type MapSchema,
   type UnitSchema,
   type MatchSummary,
-} from '@slingshot/shared';
+} from 'aslingshot/shared';
 
 import type { AnalyticsStore } from './analytics.js';
 import type { MatchContext, PlayerContext } from './types.js';

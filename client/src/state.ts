@@ -14,7 +14,7 @@ import {
   encodeRoundHashPayload,
   type MatchRuntimeState,
   type RuntimeUnit,
-} from '@slingshot/shared';
+} from 'aslingshot/shared';
 
 import { MAPS, UNITS_BY_ID } from './resources';
 

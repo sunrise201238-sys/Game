@@ -1,0 +1,5 @@
+{
+  "maps": [
+    { "id": "basic", "name": "Basic Arena", "obstacles": [], "lakes": [] }
+  ]
+}
