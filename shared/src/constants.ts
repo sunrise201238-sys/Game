@@ -2,10 +2,11 @@ export const PHYSICS_CONSTANTS = {
   timestepMs: 1000 / 120,
   dragImpulseCap: 15,
   baseFriction: 0.98,
-  gravity: 9.81,
+  gravity: 0,
   bounceDamping: 0.6,
   friendlyPushScale: 0.4,
   enemyKnockbackScale: 1.8,
+  impulseVelocityScale: 1.8,
   outOfBoundsZ: -10,
   hashTolerance: 0.0001
 } as const;

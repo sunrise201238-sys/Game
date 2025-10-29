@@ -48,15 +48,15 @@ npm run bootstrap
 Build the shared TypeScript package:
 
 ```bash
-npm run --workspace shared build
+npm run build --workspace @slingshot/shared
 ```
 
 ### Server
 
 ```bash
 # From repository root
-npm run --workspace server build
-npm run --workspace server dev  # hot execution via ts-node
+npm run build --workspace @slingshot/server
+npm run dev --workspace @slingshot/server  # hot execution via ts-node
 ```
 
 Environment variables:
@@ -74,9 +74,9 @@ Environment variables:
 
 ```bash
 # Build shared package first
-npm run --workspace shared build
+npm run build --workspace @slingshot/shared
 
-npm run --workspace client dev
+npm run dev --workspace @slingshot/client
 ```
 
 Key environment variables for the client (set via Vite `VITE_*` prefix or `.env` file in `client/`):
@@ -149,7 +149,7 @@ With the server running, open two browser tabs pointed at the client build (or d
    ```bash
    npm ci --registry=https://registry.npmjs.org/ --no-audit --no-fund || \
    npm install --registry=https://registry.npmjs.org/ --no-audit --no-fund && \
-   npm run --workspace client build
+  npm run build --workspace @slingshot/client
    ```
 3. Set the publish directory: `client/dist`.
 4. Environment variables:

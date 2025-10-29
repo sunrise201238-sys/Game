@@ -16,7 +16,7 @@ import type { MapSchema, MinimalSnapshot, RuntimeAoe } from './types.js';
 const UNIT_RADIUS = 0.8;
 const MAX_SIMULATION_MS = 2000;
 const TIME_STEP = PHYSICS_CONSTANTS.timestepMs / 1000;
-const VELOCITY_SCALE = 1.8;
+const VELOCITY_SCALE = PHYSICS_CONSTANTS.impulseVelocityScale;
 const GRAVITY = PHYSICS_CONSTANTS.gravity;
 const BASE_FRICTION = PHYSICS_CONSTANTS.baseFriction;
 const BOUNCE = PHYSICS_CONSTANTS.bounceDamping;
