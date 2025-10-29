@@ -23,6 +23,7 @@ import {
   type MapSchema,
   type UnitSchema,
   type MatchSummary,
+  type MinimalSnapshot,
 } from '@slingshot/shared';
 
 import type { AnalyticsStore } from './analytics';
