@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 
-import type { WebSocket } from 'ws';
+import { WebSocket } from 'ws';
 
 import {
   type PlayerRole,
@@ -329,7 +329,7 @@ export class MatchController {
 
   private send(role: PlayerRole, message: ServerMessage): void {
     const socket = this.match.players[role].socket;
-    if (socket && socket.readyState === socket.OPEN) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify(message));
     }
   }
