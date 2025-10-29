@@ -1,3 +1,4 @@
+import type { SimulationFrame } from './simulation.js';
 import type { MinimalSnapshot } from './types.js';
 
 export type PlayerRole = 'you' | 'opponent';
@@ -74,6 +75,7 @@ export interface RoundResultMessage {
     nextCursorYou: number;
     nextCursorOpp: number;
     randomSeed: string;
+    timeline?: SimulationFrame[];
   };
 }
 

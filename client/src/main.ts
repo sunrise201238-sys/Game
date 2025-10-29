@@ -48,12 +48,16 @@ const teamYouLabel = document.getElementById('team-you-label')!;
 const teamOpponentLabel = document.getElementById('team-opponent-label')!;
 const teamYouList = document.getElementById('team-you-list')! as HTMLUListElement;
 const teamOpponentList = document.getElementById('team-opponent-list')! as HTMLUListElement;
+const modeDescriptionEl = document.getElementById('mode-description')! as HTMLParagraphElement;
+const instructionsEl = document.getElementById('instructions')! as HTMLParagraphElement;
+const playAgainEl = document.getElementById('play-again')! as HTMLButtonElement;
 
 const renderer = new Renderer(canvas);
 let dragStart: { x: number; y: number } | null = null;
 let dragVec: { x: number; y: number } = { x: 0, y: 0 };
 let pendingAction: { round: number; action: { unitId: string; dragVec: { x: number; y: number }; skill?: string }; nonce: string } | null = null;
 let revealOpenedForRound: number | null = null;
+let lastMatchId: string | undefined;
 
 function updateModeButtons() {
   const mode = getCurrentMode();
@@ -62,6 +66,7 @@ function updateModeButtons() {
   modeOnlineEl.classList.toggle('active', !isBot);
   modeBotEl.setAttribute('aria-pressed', String(isBot));
   modeOnlineEl.setAttribute('aria-pressed', String(!isBot));
+  modeDescriptionEl.textContent = i18n.t(isBot ? 'ui.botModeDescription' : 'ui.onlineModeDescription');
 }
 
 function translateUI() {
@@ -71,6 +76,8 @@ function translateUI() {
   modeOnlineEl.textContent = i18n.t('ui.playOnline');
   teamYouLabel.textContent = i18n.t('ui.teamYou');
   teamOpponentLabel.textContent = i18n.t('ui.teamOpponent');
+  instructionsEl.textContent = i18n.t('ui.controlsHint');
+  playAgainEl.textContent = i18n.t('ui.playAgain');
   updateModeButtons();
   const snapshot = state.getSnapshot();
   updateTeamPanel(teamYouList, snapshot.youUnits, state.getActiveUnitId('you'), 'you');
@@ -100,6 +107,12 @@ modeOnlineEl.addEventListener('click', (event) => {
 });
 
 state.subscribe((snapshot) => {
+  if (snapshot.matchId && snapshot.matchId !== lastMatchId) {
+    lastMatchId = snapshot.matchId;
+    renderer.reset();
+    playAgainEl.hidden = true;
+    playAgainEl.disabled = false;
+  }
   renderer.update(snapshot);
   roundEl.textContent = snapshot.round > 0 ? i18n.t('ui.round', { round: snapshot.round }) : '';
   const mode = getCurrentMode();
@@ -110,22 +123,29 @@ state.subscribe((snapshot) => {
       break;
     case 'queueing':
       statusMessage = i18n.t(mode === 'pve' ? 'ui.queueBot' : 'ui.queueOpponent');
+      playAgainEl.hidden = true;
       break;
     case 'ready':
       statusMessage = i18n.t('ui.ready');
+      playAgainEl.hidden = true;
       break;
     case 'waiting':
       statusMessage = i18n.t('ui.waitingTurn');
+      playAgainEl.hidden = true;
       break;
     case 'resolving':
       statusMessage = i18n.t('ui.awaitingReveal');
+      playAgainEl.hidden = true;
       break;
     case 'finished':
       statusMessage = snapshot.summary
         ? i18n.t('ui.finished', { winner: snapshot.summary.winner })
         : i18n.t('ui.finishedNoWinner');
+      playAgainEl.hidden = false;
+      playAgainEl.disabled = false;
       break;
     default:
+      playAgainEl.hidden = true;
       break;
   }
   statusEl.textContent = statusMessage;
@@ -144,6 +164,18 @@ state.onHash(({ round, hash }) => {
 
 state.onTimeline((frames) => {
   renderer.play(frames);
+});
+
+state.onDiff((diff) => {
+  if (diff.deaths.length > 0) {
+    renderer.triggerDeaths(diff.deaths);
+  }
+});
+
+state.onMatchEnd(() => {
+  renderer.reset();
+  playAgainEl.hidden = false;
+  playAgainEl.disabled = false;
 });
 
 setInterval(() => {
@@ -200,6 +232,8 @@ const socket = new GameSocket(
     if (message.type === 'ROUND_START') {
       revealOpenedForRound = null;
       pendingAction = null;
+      playAgainEl.hidden = true;
+      playAgainEl.disabled = true;
     }
   },
   (status) => {
@@ -208,9 +242,20 @@ const socket = new GameSocket(
       socket.send({ type: 'JOIN_QUEUE', payload: { playerId } });
     } else if (status === 'connecting') {
       state.setStatus('connecting');
+    } else if (status === 'closed') {
+      state.setStatus('connecting');
     }
   },
 );
+
+playAgainEl.addEventListener('click', (event) => {
+  event.preventDefault();
+  renderer.reset();
+  state.setStatus('queueing');
+  state.updateCountdown(0);
+  playAgainEl.disabled = true;
+  socket.send({ type: 'JOIN_QUEUE', payload: { playerId } });
+});
 
 function canvasPos(evt: PointerEvent) {
   const rect = canvas.getBoundingClientRect();

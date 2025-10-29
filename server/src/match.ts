@@ -217,6 +217,7 @@ export class MatchController {
         state: this.match.runtime,
         actions,
         actingOrder,
+        captureTimeline: true,
       },
     );
 
@@ -246,6 +247,7 @@ export class MatchController {
           nextCursorYou: outcome.next.cursors[role],
           nextCursorOpp: outcome.next.cursors[opponentRole],
           randomSeed: outcome.next.randomSeed,
+          timeline: outcome.frames,
         },
       };
       this.send(role, resultMessage);

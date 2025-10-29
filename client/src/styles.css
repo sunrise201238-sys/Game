@@ -89,6 +89,49 @@ main {
   align-items: center;
 }
 
+.mode-description {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.95rem;
+  opacity: 0.75;
+}
+
+.hud-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.instructions {
+  margin: 0;
+  font-size: 0.85rem;
+  opacity: 0.7;
+  max-width: 32rem;
+}
+
+#play-again.primary {
+  padding: 0.45rem 1.25rem;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(90deg, #53e1ff, #ff6f91);
+  color: #0b132b;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+#play-again.primary:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+#play-again.primary:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(83, 225, 255, 0.35);
+}
+
 .teams {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

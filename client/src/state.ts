@@ -42,6 +42,7 @@ export interface ClientState {
 
 export type HashListener = (payload: { round: number; hash: string }) => void;
 export type TimelineListener = (frames: SimulationFrame[]) => void;
+export type DiffListener = (diff: RoundDiff) => void;
 
 const PLAYER_ORDER: PlayerRole[] = ['you', 'opponent'];
 
@@ -62,7 +63,9 @@ export class GameStateManager {
   private pendingOutcome: ReturnType<typeof simulateRound> | null = null;
   private hashListeners: HashListener[] = [];
   private timelineListeners: TimelineListener[] = [];
+  private diffListeners: DiffListener[] = [];
   private listeners: Array<(state: ClientState) => void> = [];
+  private matchEndListeners: Array<(payload: MatchEndMessage['payload']) => void> = [];
 
   subscribe(listener: (state: ClientState) => void) {
     this.listeners.push(listener);
@@ -83,6 +86,14 @@ export class GameStateManager {
 
   onTimeline(listener: TimelineListener) {
     this.timelineListeners.push(listener);
+  }
+
+  onDiff(listener: DiffListener) {
+    this.diffListeners.push(listener);
+  }
+
+  onMatchEnd(listener: (payload: MatchEndMessage['payload']) => void) {
+    this.matchEndListeners.push(listener);
   }
 
   updateFromServer(message: ServerMessage) {
@@ -167,6 +178,8 @@ export class GameStateManager {
       matchId: message.payload.matchId,
     };
     this.firstMover = message.payload.firstMover;
+    this.actions = {};
+    this.pendingOutcome = null;
     this.emit();
   }
 
@@ -196,8 +209,10 @@ export class GameStateManager {
 
   private handleRoundResult(message: RoundResultMessage) {
     if (!this.runtime) return;
-    if (this.pendingOutcome && this.pendingOutcome.next.round === message.payload.round) {
-      this.runtime = this.pendingOutcome.next;
+    const pending = this.pendingOutcome;
+    const hadLocalTimeline = Boolean(pending?.frames?.length);
+    if (pending && pending.next.round === message.payload.round) {
+      this.runtime = pending.next;
     } else {
       applyDiffToRuntime(this.runtime, message.payload.diff);
       this.runtime.round = message.payload.round;
@@ -214,12 +229,30 @@ export class GameStateManager {
     this.actions = {};
     this.pendingOutcome = null;
     this.emit();
+
+    const fallbackTimeline = !hadLocalTimeline ? message.payload.timeline ?? [] : [];
+    if (fallbackTimeline.length > 0) {
+      for (const listener of this.timelineListeners) {
+        listener(fallbackTimeline);
+      }
+    }
+
+    for (const listener of this.diffListeners) {
+      listener(message.payload.diff);
+    }
   }
 
   private handleMatchEnd(message: MatchEndMessage) {
     this.state.status = 'finished';
     this.state.summary = { winner: message.payload.winner };
+    this.state.countdownMs = 0;
+    this.runtime = null;
+    this.actions = {};
+    this.pendingOutcome = null;
     this.emit();
+    for (const listener of this.matchEndListeners) {
+      listener(message.payload);
+    }
   }
 
   private restoreSnapshot(snapshot: MinimalSnapshot) {

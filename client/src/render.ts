@@ -15,12 +15,19 @@ interface AimIndicator {
   launch: { x: number; y: number };
 }
 
+interface DeathEffect {
+  position: { x: number; y: number };
+  startedAt: number;
+  duration: number;
+}
+
 export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly canvas: HTMLCanvasElement;
   private state: ClientState | null = null;
   private animation: AnimationState | null = null;
   private aim: AimIndicator | null = null;
+  private deathEffects: DeathEffect[] = [];
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -49,6 +56,19 @@ export class Renderer {
     };
   }
 
+  reset() {
+    this.animation = null;
+    this.aim = null;
+    this.deathEffects = [];
+  }
+
+  triggerDeaths(positions: Array<{ position: { x: number; y: number } }>) {
+    const now = performance.now();
+    for (const { position } of positions) {
+      this.deathEffects.push({ position: { ...position }, startedAt: now, duration: 600 });
+    }
+  }
+
   setAim(origin: { x: number; y: number } | null, dragVector?: { x: number; y: number }) {
     if (!origin || !dragVector) {
       this.aim = null;
@@ -70,6 +90,7 @@ export class Renderer {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     this.drawBackground();
     this.drawAimIndicator();
+    this.drawDeathEffects();
 
     const display = this.animation ? this.sampleAnimationFrame() : null;
     const youUnits = display?.you ?? this.state.youUnits;
@@ -78,6 +99,26 @@ export class Renderer {
     this.drawUnits(youUnits, '#53e1ff');
     this.drawUnits(opponentUnits, '#ff6f91');
     this.drawGraves(this.state.graves);
+  }
+
+  private drawDeathEffects() {
+    if (this.deathEffects.length === 0) return;
+    const now = performance.now();
+    this.deathEffects = this.deathEffects.filter((effect) => now - effect.startedAt < effect.duration);
+    for (const effect of this.deathEffects) {
+      const progress = Math.min((now - effect.startedAt) / effect.duration, 1);
+      const alpha = 1 - progress;
+      const radius = 12 + progress * 24;
+      const point = this.worldToCanvas(effect.position);
+      this.ctx.save();
+      this.ctx.globalAlpha = alpha;
+      this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+      this.ctx.lineWidth = 3;
+      this.ctx.beginPath();
+      this.ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+      this.ctx.stroke();
+      this.ctx.restore();
+    }
   }
 
   private drawBackground() {
