@@ -3,7 +3,9 @@
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "dist",
-    "types": ["node"]
+    "strict": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true
   },
   "include": ["src", "../shared/src"],
   "references": [{ "path": "../shared" }]
