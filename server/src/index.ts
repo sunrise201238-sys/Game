@@ -1,5 +1,8 @@
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -38,6 +41,11 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+const clientDistDir = path.resolve(moduleDir, '../../client/dist');
+const clientIndexPath = path.join(clientDistDir, 'index.html');
+const hasClientBundle = existsSync(clientIndexPath);
+
 const analytics = createAnalyticsStore(config.analyticsMode);
 const resourcesPromise = loadResources();
 
@@ -45,9 +53,16 @@ const waitingQueue: QueueTicket[] = [];
 const matches = new Map<string, MatchController>();
 const playerToMatch = new Map<string, { controller: MatchController; role: PlayerRole }>();
 
-app.get('/', (_req, res) => {
-  res.type('text/plain').send('Slingshot game server is running. Connect via WebSocket at /ws.');
-});
+if (hasClientBundle) {
+  app.use(express.static(clientDistDir));
+  app.get('/', (_req, res) => {
+    res.sendFile(clientIndexPath);
+  });
+} else {
+  app.get('/', (_req, res) => {
+    res.type('text/plain').send('Slingshot game server is running. Connect via WebSocket at /ws.');
+  });
+}
 
 app.get('/healthz', (_req, res) => {
   res.json({ ok: true, uptime: process.uptime() });
