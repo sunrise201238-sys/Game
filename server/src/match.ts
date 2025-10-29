@@ -495,13 +495,23 @@ function pickSpawnTemplate(map: MapSchema) {
 
 function getNextAvailableUnit(runtime: MatchContext['runtime'], role: PlayerRole) {
   const order = runtime.turnOrder[role];
-  const cursor = Math.min(runtime.cursors[role], order.length - 1);
-  for (let idx = cursor; idx < order.length; idx++) {
+  if (order.length === 0) return null;
+  const rawCursor = runtime.cursors[role];
+  const start = normalizeCursor(rawCursor, order.length);
+  for (let offset = 0; offset < order.length; offset++) {
+    const idx = (start + offset) % order.length;
     const unitId = order[idx];
     const unit = runtime.teams[role].units.find((candidate) => candidate.id === unitId && candidate.alive);
     if (unit) return unit;
   }
   return null;
+}
+
+function normalizeCursor(cursor: number, length: number): number {
+  if (length === 0) return 0;
+  if (!Number.isFinite(cursor)) return 0;
+  const normalized = cursor % length;
+  return normalized < 0 ? normalized + length : normalized;
 }
 
 function nextPlayer(role: PlayerRole): PlayerRole {

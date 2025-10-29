@@ -249,12 +249,12 @@ export function simulateRound(
   for (const role of input.actingOrder) {
     const action = input.actions[role];
     const opponent: PlayerRole = role === 'you' ? 'opponent' : 'you';
-    const { unit, index } = findNextActiveUnit(state, role);
+    const { unit, nextCursor } = findNextActiveUnit(state, role);
+    cursorUpdates[role] = nextCursor;
     if (!unit) {
       forfeitWinner = opponent;
       continue;
     }
-    cursorUpdates[role] = index + 1;
     let resolvedAction: UnitAction = {
       unitId: unit.id,
       dragVec: { x: 0, y: 0 },
@@ -538,17 +538,28 @@ function normalizeAction(action: UnitAction): UnitAction {
   };
 }
 
+function normalizeCursor(cursor: number, length: number): number {
+  if (length === 0) return 0;
+  if (!Number.isFinite(cursor)) return 0;
+  const normalized = cursor % length;
+  return normalized < 0 ? normalized + length : normalized;
+}
+
 function findNextActiveUnit(state: MatchRuntimeState, role: PlayerRole) {
   const turnOrder = state.turnOrder[role];
-  const cursor = Math.min(state.cursors[role], turnOrder.length - 1);
-  for (let idx = cursor; idx < turnOrder.length; idx++) {
+  if (turnOrder.length === 0) {
+    return { unit: null, index: 0, nextCursor: 0 };
+  }
+  const start = normalizeCursor(state.cursors[role], turnOrder.length);
+  for (let offset = 0; offset < turnOrder.length; offset++) {
+    const idx = (start + offset) % turnOrder.length;
     const unitId = turnOrder[idx];
     const unit = state.teams[role].units.find((u) => u.id === unitId && u.alive);
     if (unit) {
-      return { unit, index: idx };
+      return { unit, index: idx, nextCursor: (idx + 1) % turnOrder.length };
     }
   }
-  return { unit: null, index: turnOrder.length };
+  return { unit: null, index: start, nextCursor: start };
 }
 
 function resolveProjectile(
