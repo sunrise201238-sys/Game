@@ -16,10 +16,11 @@ import type { MapSchema, MinimalSnapshot, RuntimeAoe } from './types.js';
 const UNIT_RADIUS = 0.8;
 const MAX_SIMULATION_MS = 2000;
 const TIME_STEP = PHYSICS_CONSTANTS.timestepMs / 1000;
-const VELOCITY_SCALE = 0.3;
+const VELOCITY_SCALE = 1.8;
 const GRAVITY = PHYSICS_CONSTANTS.gravity;
 const BASE_FRICTION = PHYSICS_CONSTANTS.baseFriction;
 const BOUNCE = PHYSICS_CONSTANTS.bounceDamping;
+const BASE_FRICTION_PER_STEP = Math.pow(BASE_FRICTION, TIME_STEP);
 
 export interface RuntimeUnit extends UnitState {
   velocity: Vector2;
@@ -381,13 +382,21 @@ function integrateUnit(
   if (!unit.alive) return;
 
   unit.velocity.y += GRAVITY * TIME_STEP;
-  unit.position.x += unit.velocity.x;
-  unit.position.y += unit.velocity.y;
+  unit.position.x += unit.velocity.x * TIME_STEP;
+  unit.position.y += unit.velocity.y * TIME_STEP;
 
-  unit.velocity.x *= stats.moveFriction;
-  unit.velocity.y *= stats.moveFriction;
-  unit.velocity.x *= BASE_FRICTION;
-  unit.velocity.y *= BASE_FRICTION;
+  const moveFriction = Math.max(0, Math.min(1, stats.moveFriction ?? 1));
+  const moveFrictionPerStep = Math.pow(moveFriction, TIME_STEP);
+  const friction = moveFrictionPerStep * BASE_FRICTION_PER_STEP;
+  unit.velocity.x *= friction;
+  unit.velocity.y *= friction;
+
+  if (Math.abs(unit.velocity.x) < 0.02) {
+    unit.velocity.x = 0;
+  }
+  if (Math.abs(unit.velocity.y) < 0.02) {
+    unit.velocity.y = 0;
+  }
 
   enforceBounds(state.map, unit, stats);
 

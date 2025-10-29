@@ -38,6 +38,8 @@ export interface ClientState {
   mapId?: string;
   matchId?: string;
   summary?: { winner: string };
+  activeYouId: string | null;
+  activeOpponentId: string | null;
 }
 
 export type HashListener = (payload: { round: number; hash: string }) => void;
@@ -54,6 +56,8 @@ export class GameStateManager {
     youUnits: [],
     opponentUnits: [],
     graves: [],
+    activeYouId: null,
+    activeOpponentId: null,
   };
 
   private runtime: MatchRuntimeState | null = null;
@@ -77,6 +81,8 @@ export class GameStateManager {
     snapshot.youUnits = this.state.youUnits.map((unit) => ({ ...unit, position: { ...unit.position } }));
     snapshot.opponentUnits = this.state.opponentUnits.map((unit) => ({ ...unit, position: { ...unit.position } }));
     snapshot.graves = this.state.graves.map((grave) => ({ position: { ...grave.position }, count: grave.count }));
+    snapshot.activeYouId = this.getActiveUnitId('you');
+    snapshot.activeOpponentId = this.getActiveUnitId('opponent');
     return snapshot;
   }
 
@@ -176,6 +182,8 @@ export class GameStateManager {
       graves: [],
       mapId: map.id,
       matchId: message.payload.matchId,
+      activeYouId: this.getActiveUnitId('you'),
+      activeOpponentId: this.getActiveUnitId('opponent'),
     };
     this.firstMover = message.payload.firstMover;
     this.actions = {};
@@ -193,6 +201,8 @@ export class GameStateManager {
     this.state.countdownMs = Math.max(message.payload.deadlineTs - Date.now(), 0);
     this.actions = {};
     this.pendingOutcome = null;
+    this.state.activeYouId = this.getActiveUnitId('you');
+    this.state.activeOpponentId = this.getActiveUnitId('opponent');
     this.emit();
   }
 
@@ -228,6 +238,8 @@ export class GameStateManager {
     this.state.graves = extractGraves(message.payload.diff);
     this.actions = {};
     this.pendingOutcome = null;
+    this.state.activeYouId = this.getActiveUnitId('you');
+    this.state.activeOpponentId = this.getActiveUnitId('opponent');
     this.emit();
 
     const fallbackTimeline = !hadLocalTimeline ? message.payload.timeline ?? [] : [];
@@ -249,6 +261,8 @@ export class GameStateManager {
     this.runtime = null;
     this.actions = {};
     this.pendingOutcome = null;
+    this.state.activeYouId = null;
+    this.state.activeOpponentId = null;
     this.emit();
     for (const listener of this.matchEndListeners) {
       listener(message.payload);
@@ -277,6 +291,8 @@ export class GameStateManager {
     this.state.round = snapshot.round;
     this.state.countdownMs = 0;
     this.state.status = 'waiting';
+    this.state.activeYouId = this.getActiveUnitId('you');
+    this.state.activeOpponentId = this.getActiveUnitId('opponent');
     this.emit();
   }
 

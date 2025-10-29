@@ -1,7 +1,7 @@
 import type { SimulationFrame } from '@slingshot/shared';
 
 import type { ClientState, ClientUnitState } from './state';
-import { MAPS } from './resources';
+import { MAPS, UNITS_BY_ID } from './resources';
 
 interface AnimationState {
   frames: SimulationFrame[];
@@ -21,6 +21,11 @@ interface DeathEffect {
   duration: number;
 }
 
+interface TrailPath {
+  id: string;
+  path: Array<{ x: number; y: number }>;
+}
+
 export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly canvas: HTMLCanvasElement;
@@ -28,6 +33,7 @@ export class Renderer {
   private animation: AnimationState | null = null;
   private aim: AimIndicator | null = null;
   private deathEffects: DeathEffect[] = [];
+  private trails: { you: TrailPath[]; opponent: TrailPath[] } = { you: [], opponent: [] };
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -45,6 +51,7 @@ export class Renderer {
   play(frames: SimulationFrame[]) {
     if (!frames || frames.length === 0) {
       this.animation = null;
+      this.trails = { you: [], opponent: [] };
       return;
     }
     const last = frames[frames.length - 1];
@@ -54,12 +61,14 @@ export class Renderer {
       startedAt: performance.now(),
       duration,
     };
+    this.trails = this.buildTrails(frames);
   }
 
   reset() {
     this.animation = null;
     this.aim = null;
     this.deathEffects = [];
+    this.trails = { you: [], opponent: [] };
   }
 
   triggerDeaths(positions: Array<{ position: { x: number; y: number } }>) {
@@ -88,7 +97,7 @@ export class Renderer {
     if (!this.state) return;
     const { ctx, canvas } = this;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    this.drawBackground();
+    this.drawEnvironment();
     this.drawAimIndicator();
     this.drawDeathEffects();
 
@@ -96,8 +105,9 @@ export class Renderer {
     const youUnits = display?.you ?? this.state.youUnits;
     const opponentUnits = display?.opponent ?? this.state.opponentUnits;
 
-    this.drawUnits(youUnits, '#53e1ff');
-    this.drawUnits(opponentUnits, '#ff6f91');
+    this.drawTrails();
+    this.drawUnits(youUnits, '#53e1ff', this.state.activeYouId);
+    this.drawUnits(opponentUnits, '#ff6f91', this.state.activeOpponentId);
     this.drawGraves(this.state.graves);
   }
 
@@ -108,12 +118,17 @@ export class Renderer {
     for (const effect of this.deathEffects) {
       const progress = Math.min((now - effect.startedAt) / effect.duration, 1);
       const alpha = 1 - progress;
-      const radius = 12 + progress * 24;
+      const radius = 12 + progress * 26;
       const point = this.worldToCanvas(effect.position);
       this.ctx.save();
+      this.ctx.globalAlpha = alpha * 0.55;
+      this.ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+      this.ctx.beginPath();
+      this.ctx.arc(point.x, point.y, radius * 0.6, 0, Math.PI * 2);
+      this.ctx.fill();
       this.ctx.globalAlpha = alpha;
-      this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-      this.ctx.lineWidth = 3;
+      this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+      this.ctx.lineWidth = 2 + progress * 2;
       this.ctx.beginPath();
       this.ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
       this.ctx.stroke();
@@ -121,60 +136,182 @@ export class Renderer {
     }
   }
 
-  private drawBackground() {
+  private drawEnvironment() {
     const { ctx, canvas } = this;
     const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    gradient.addColorStop(0, '#14213d');
-    gradient.addColorStop(1, '#0b132b');
+    gradient.addColorStop(0, '#0b1f3a');
+    gradient.addColorStop(1, '#050b16');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
     const bounds = this.getMapBounds();
     const scale = this.getScale();
     const offset = this.getOffset(bounds, scale);
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-    ctx.lineWidth = 2;
+    const map = this.getCurrentMap();
+
+    ctx.save();
+    ctx.fillStyle = '#1f4037';
+    ctx.fillRect(offset.x, offset.y, bounds.w * scale, bounds.h * scale);
+    ctx.strokeStyle = '#e63946';
+    ctx.lineWidth = 4;
     ctx.strokeRect(offset.x, offset.y, bounds.w * scale, bounds.h * scale);
-    ctx.fillStyle = 'rgba(255,255,255,0.06)';
-    for (let gridX = 1; gridX < bounds.w; gridX += 4) {
-      ctx.fillRect(offset.x + gridX * scale - 1, offset.y, 2, bounds.h * scale);
+    ctx.restore();
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 1;
+    for (let gridX = 1; gridX < bounds.w; gridX += 2) {
+      ctx.beginPath();
+      ctx.moveTo(offset.x + gridX * scale, offset.y);
+      ctx.lineTo(offset.x + gridX * scale, offset.y + bounds.h * scale);
+      ctx.stroke();
     }
-    for (let gridY = 1; gridY < bounds.h; gridY += 4) {
-      ctx.fillRect(offset.x, offset.y + gridY * scale - 1, bounds.w * scale, 2);
+    for (let gridY = 1; gridY < bounds.h; gridY += 2) {
+      ctx.beginPath();
+      ctx.moveTo(offset.x, offset.y + gridY * scale);
+      ctx.lineTo(offset.x + bounds.w * scale, offset.y + gridY * scale);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    if (!map) return;
+
+    for (const lake of map.lakes ?? []) {
+      const polygon = lake.polygon.map((point) => this.worldToCanvas(point));
+      ctx.save();
+      ctx.beginPath();
+      polygon.forEach((point, index) => {
+        if (index === 0) {
+          ctx.moveTo(point.x, point.y);
+        } else {
+          ctx.lineTo(point.x, point.y);
+        }
+      });
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(64, 156, 255, 0.78)';
+      ctx.fill();
+      ctx.clip();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.lineWidth = 3;
+      const diag = Math.hypot(bounds.w, bounds.h) * scale;
+      for (let d = -diag; d < diag * 2; d += 16) {
+        ctx.beginPath();
+        ctx.moveTo(offset.x + d, offset.y - diag * 0.2);
+        ctx.lineTo(offset.x + d - diag, offset.y + diag);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    for (const wall of map.walls ?? []) {
+      const polygon = wall.polygon.map((point) => this.worldToCanvas(point));
+      ctx.save();
+      ctx.beginPath();
+      polygon.forEach((point, index) => {
+        if (index === 0) {
+          ctx.moveTo(point.x, point.y);
+        } else {
+          ctx.lineTo(point.x, point.y);
+        }
+      });
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(90, 90, 90, 0.85)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
     }
   }
 
-  private drawUnits(units: ClientUnitState[], color: string) {
+  private drawTrails() {
+    const drawFor = (paths: TrailPath[], stroke: string) => {
+      for (const trail of paths) {
+        if (trail.path.length < 2) continue;
+        this.ctx.save();
+        this.ctx.strokeStyle = stroke;
+        this.ctx.lineWidth = 3;
+        this.ctx.globalAlpha = 0.45;
+        this.ctx.beginPath();
+        trail.path.forEach((point, index) => {
+          const { x, y } = this.worldToCanvas(point);
+          if (index === 0) {
+            this.ctx.moveTo(x, y);
+          } else {
+            this.ctx.lineTo(x, y);
+          }
+        });
+        this.ctx.stroke();
+        this.ctx.restore();
+      }
+    };
+
+    drawFor(this.trails.you, 'rgba(83, 225, 255, 0.55)');
+    drawFor(this.trails.opponent, 'rgba(255, 111, 145, 0.55)');
+  }
+
+  private drawUnits(units: ClientUnitState[], color: string, activeId: string | null) {
     const { ctx } = this;
     const scale = this.getScale();
-    const radius = Math.max(10, scale * 0.55);
-    units.forEach((unit) => {
+    const radius = Math.max(12, scale * 0.65);
+    const outline = color === '#53e1ff' ? 'rgba(83, 225, 255, 0.6)' : 'rgba(255, 111, 145, 0.6)';
+
+    for (const unit of units) {
       const { x, y } = this.worldToCanvas(unit.position);
-      ctx.globalAlpha = unit.alive ? 1 : 0.4;
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = color === '#53e1ff' ? 'rgba(83, 225, 255, 0.4)' : 'rgba(255, 111, 145, 0.4)';
+      const schema = UNITS_BY_ID[unit.type];
+      const maxHp = schema?.hp ?? Math.max(unit.hp, 1);
+      const hpRatio = Math.max(0, Math.min(1, unit.hp / maxHp));
+
+      ctx.save();
+      ctx.globalAlpha = unit.alive ? 1 : 0.35;
+      if (unit.id === activeId && unit.alive) {
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = color;
+      }
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = outline;
       ctx.beginPath();
-      ctx.arc(x, y, radius + 4, 0, Math.PI * 2);
+      ctx.arc(x, y, radius + 6, 0, Math.PI * 2);
       ctx.stroke();
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#111';
+      ctx.fillStyle = '#081229';
       ctx.font = `${Math.max(12, radius * 0.9)}px Inter`;
       ctx.textAlign = 'center';
       ctx.fillText(unit.type.slice(0, 1).toUpperCase(), x, y + 5);
-      ctx.globalAlpha = 1;
-    });
+      ctx.restore();
+
+      const barWidth = Math.max(radius * 2.4, 52);
+      const barHeight = 6;
+      const barX = x - barWidth / 2;
+      const barY = y + radius + 10;
+      ctx.fillStyle = 'rgba(8, 18, 41, 0.75)';
+      ctx.fillRect(barX, barY, barWidth, barHeight);
+      ctx.fillStyle = color === '#53e1ff' ? '#4ade80' : '#f87171';
+      ctx.fillRect(barX, barY, barWidth * hpRatio, barHeight);
+    }
   }
 
   private drawGraves(graves: Array<{ position: { x: number; y: number }; count: number }>) {
     const { ctx } = this;
     graves.forEach((grave) => {
       const { x, y } = this.worldToCanvas(grave.position);
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
-      ctx.font = '12px Inter';
+      ctx.save();
+      ctx.fillStyle = 'rgba(209, 213, 219, 0.85)';
+      ctx.beginPath();
+      ctx.moveTo(x - 8, y + 18);
+      ctx.lineTo(x - 8, y + 6);
+      ctx.quadraticCurveTo(x, y - 4, x + 8, y + 6);
+      ctx.lineTo(x + 8, y + 18);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#1f2937';
+      ctx.font = '10px Inter';
       ctx.textAlign = 'center';
-      ctx.fillText(`✖${grave.count}`, x, y + 24);
+      ctx.fillText(`×${grave.count}`, x, y + 14);
+      ctx.restore();
     });
   }
 
@@ -209,6 +346,33 @@ export class Renderer {
     ctx.lineTo(end.x + Math.cos(angle - Math.PI * 0.75) * size, end.y + Math.sin(angle - Math.PI * 0.75) * size);
     ctx.closePath();
     ctx.fill();
+  }
+
+  private buildTrails(frames: SimulationFrame[]): { you: TrailPath[]; opponent: TrailPath[] } {
+    const collect = (role: 'you' | 'opponent'): TrailPath[] => {
+      const store = new Map<string, TrailPath>();
+      for (const frame of frames) {
+        for (const unit of frame[role]) {
+          let entry = store.get(unit.id);
+          if (!entry) {
+            entry = { id: unit.id, path: [] };
+            store.set(unit.id, entry);
+          }
+          const previous = entry.path[entry.path.length - 1];
+          const dx = previous ? unit.position.x - previous.x : Infinity;
+          const dy = previous ? unit.position.y - previous.y : Infinity;
+          if (!previous || dx * dx + dy * dy > 0.01) {
+            entry.path.push({ ...unit.position });
+          }
+        }
+      }
+      return Array.from(store.values()).filter((trail) => trail.path.length > 1);
+    };
+
+    return {
+      you: collect('you'),
+      opponent: collect('opponent'),
+    };
   }
 
   private sampleAnimationFrame(): { you: ClientUnitState[]; opponent: ClientUnitState[] } | null {
@@ -265,11 +429,15 @@ export class Renderer {
     };
   }
 
-  private getMapBounds() {
+  private getCurrentMap() {
     if (!this.state?.mapId) {
-      return { w: 40, h: 24 };
+      return null;
     }
-    const map = MAPS.find((candidate) => candidate.id === this.state?.mapId);
+    return MAPS.find((candidate) => candidate.id === this.state?.mapId) ?? null;
+  }
+
+  private getMapBounds() {
+    const map = this.getCurrentMap();
     return map?.bounds ?? { w: 40, h: 24 };
   }
 

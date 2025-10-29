@@ -8,11 +8,11 @@
   ],
   "scripts": {
     "bootstrap": "npm ci --workspaces",
-    "build": "npm run --workspace shared build && npm run --workspace server build && npm run --workspace client build",
-    "start": "npm run --workspace server start",
-    "start:server": "npm run --workspace server start",
-    "lint": "npm run lint --workspace=client && npm run lint --workspace=server",
-    "format": "npm run format --workspace=client && npm run format --workspace=server"
+    "build": "npm run --workspace @slingshot/shared build && npm run --workspace @slingshot/server build && npm run --workspace @slingshot/client build",
+    "start": "npm run --workspace @slingshot/server start",
+    "start:server": "npm run --workspace @slingshot/server start",
+    "lint": "npm run lint --workspace=@slingshot/client && npm run lint --workspace=@slingshot/server",
+    "format": "npm run format --workspace=@slingshot/client && npm run format --workspace=@slingshot/server"
   },
   "engines": {
     "node": ">=20",

@@ -3,7 +3,7 @@ import { GameStateManager } from './state';
 import type { ClientUnitState } from './state';
 import { Renderer } from './render';
 import { GameSocket } from './network';
-import { serializeCommitPayload } from '@slingshot/shared';
+import { PHYSICS_CONSTANTS, serializeCommitPayload } from '@slingshot/shared';
 import type { ClientMessage } from '@slingshot/shared';
 
 type GameMode = 'pve' | 'pvp';
@@ -80,8 +80,8 @@ function translateUI() {
   playAgainEl.textContent = i18n.t('ui.playAgain');
   updateModeButtons();
   const snapshot = state.getSnapshot();
-  updateTeamPanel(teamYouList, snapshot.youUnits, state.getActiveUnitId('you'), 'you');
-  updateTeamPanel(teamOpponentList, snapshot.opponentUnits, state.getActiveUnitId('opponent'), 'opponent');
+  updateTeamPanel(teamYouList, snapshot.youUnits, snapshot.activeYouId, 'you');
+  updateTeamPanel(teamOpponentList, snapshot.opponentUnits, snapshot.activeOpponentId, 'opponent');
 }
 
 translateUI();
@@ -150,8 +150,8 @@ state.subscribe((snapshot) => {
   }
   statusEl.textContent = statusMessage;
   countdownEl.textContent = snapshot.status === 'ready' && snapshot.countdownMs > 0 ? (snapshot.countdownMs / 1000).toFixed(1) : '';
-  updateTeamPanel(teamYouList, snapshot.youUnits, state.getActiveUnitId('you'), 'you');
-  updateTeamPanel(teamOpponentList, snapshot.opponentUnits, state.getActiveUnitId('opponent'), 'opponent');
+  updateTeamPanel(teamYouList, snapshot.youUnits, snapshot.activeYouId, 'you');
+  updateTeamPanel(teamOpponentList, snapshot.opponentUnits, snapshot.activeOpponentId, 'opponent');
 });
 
 state.onHash(({ round, hash }) => {
@@ -331,7 +331,7 @@ function stateSnapshot() {
 }
 
 function normalizeVector(vec: { x: number; y: number }) {
-  const max = 9;
+  const max = PHYSICS_CONSTANTS.dragImpulseCap;
   const scale = 1 / 55;
   return {
     x: clamp(-vec.x * scale, -max, max),
