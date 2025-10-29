@@ -1,7 +1,6 @@
 module.exports = {
   root: true,
   env: {
-    browser: true,
     es2021: true
   },
   extends: ["eslint:recommended", "plugin:import/recommended", "prettier"],
@@ -17,7 +16,6 @@ module.exports = {
     }
   },
   rules: {
-    "import/no-unresolved": ["error", { ignore: ["^@shared/"] }],
     "no-restricted-imports": [
       "error",
       {
