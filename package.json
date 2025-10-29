@@ -8,9 +8,9 @@
   ],
   "scripts": {
     "bootstrap": "npm ci --workspaces",
-    "build": "npm run build --workspace shared && npm run build --workspace server && npm run build --workspace client",
-    "start": "npm run start --workspace server",
-    "start:server": "npm run start --workspace server",
+    "build": "npm run --workspace shared build && npm run --workspace server build && npm run --workspace client build",
+    "start": "npm run --workspace server start",
+    "start:server": "npm run --workspace server start",
     "lint": "npm run lint --workspace=client && npm run lint --workspace=server",
     "format": "npm run format --workspace=client && npm run format --workspace=server"
   },

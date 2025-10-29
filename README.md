@@ -48,15 +48,15 @@ npm run bootstrap
 Build the shared TypeScript package:
 
 ```bash
-npm run build --workspace=shared
+npm run --workspace shared build
 ```
 
 ### Server
 
 ```bash
 # From repository root
-npm run build --workspace=server
-npm run dev --workspace=server  # hot execution via ts-node
+npm run --workspace server build
+npm run --workspace server dev  # hot execution via ts-node
 ```
 
 Environment variables:
@@ -74,9 +74,9 @@ Environment variables:
 
 ```bash
 # Build shared package first
-npm run build --workspace=shared
+npm run --workspace shared build
 
-npm run dev --workspace=client
+npm run --workspace client dev
 ```
 
 Key environment variables for the client (set via Vite `VITE_*` prefix or `.env` file in `client/`):
@@ -149,7 +149,7 @@ With the server running, open two browser tabs pointed at the client build (or d
    ```bash
    npm ci --registry=https://registry.npmjs.org/ --no-audit --no-fund || \
    npm install --registry=https://registry.npmjs.org/ --no-audit --no-fund && \
-   npm run build --workspace client
+   npm run --workspace client build
    ```
 3. Set the publish directory: `client/dist`.
 4. Environment variables:
