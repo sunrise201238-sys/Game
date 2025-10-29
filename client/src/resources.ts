@@ -2,10 +2,12 @@ import maps from '../maps/maps.json';
 import units from './units/units.json';
 import type { MapSchema, UnitSchema } from '@slingshot/shared';
 
-export const MAPS: MapSchema[] = maps as MapSchema[];
-export const UNITS: UnitSchema[] = units as UnitSchema[];
+const rawMaps = (maps as { maps?: unknown })?.maps ?? maps;
+export const MAPS: MapSchema[] = Array.isArray(rawMaps) ? (rawMaps as MapSchema[]) : [];
+
+export const UNITS: UnitSchema[] = Array.isArray(units) ? (units as UnitSchema[]) : [];
 export const UNITS_BY_ID: Record<string, UnitSchema> = Object.fromEntries(
-  (units as UnitSchema[]).map((unit) => [unit.id, unit]),
+  UNITS.map((unit) => [unit.id, unit]),
 );
 
 export default maps;

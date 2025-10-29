@@ -1,5 +1,37 @@
-{
-  "maps": [
-    { "id": "basic", "name": "Basic Arena", "obstacles": [], "lakes": [] }
-  ]
-}
+[
+  {
+    "id": "grassy-field",
+    "nameKey": "map.grassy-field",
+    "bounds": { "w": 40, "h": 24 },
+    "lakes": [
+      { "polygon": [{ "x": 12, "y": 6 }, { "x": 16, "y": 5 }, { "x": 18, "y": 8 }, { "x": 14, "y": 9 }] }
+    ],
+    "walls": [
+      {
+        "polygon": [
+          { "x": 20, "y": 3 },
+          { "x": 21, "y": 8 },
+          { "x": 23, "y": 8 },
+          { "x": 24, "y": 3 }
+        ],
+        "bounciness": 0.45
+      }
+    ],
+    "spawnTemplates": [
+      {
+        "id": "default",
+        "slotsYou": [
+          { "x": 6, "y": 5 },
+          { "x": 6, "y": 8 },
+          { "x": 6, "y": 11 }
+        ],
+        "slotsOpp": [
+          { "x": 34, "y": 5 },
+          { "x": 34, "y": 8 },
+          { "x": 34, "y": 11 }
+        ]
+      }
+    ],
+    "ruleFlags": { "maxRounds": 40, "tieBreak": "hp" }
+  }
+]
