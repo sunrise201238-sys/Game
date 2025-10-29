@@ -9,13 +9,30 @@ async function readJson<T>(filePath: string): Promise<T> {
   return JSON.parse(content) as T;
 }
 
+async function readJsonWithFallback<T>(candidates: string[]): Promise<T> {
+  let lastError: unknown;
+  for (const candidate of candidates) {
+    try {
+      return await readJson<T>(candidate);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        throw error;
+      }
+      lastError = error;
+    }
+  }
+
+  throw lastError ?? new Error('No JSON file candidates were provided.');
+}
+
 export async function loadResources(root = process.cwd()): Promise<GameResources> {
-  const mapsDir = path.join(root, 'maps');
-  const unitsDir = path.join(root, 'units');
+  const searchRoots = [root, path.resolve(root, '..')];
+  const mapCandidates = searchRoots.map((dir) => path.join(dir, 'maps', 'maps.json'));
+  const unitCandidates = searchRoots.map((dir) => path.join(dir, 'units', 'units.json'));
 
   const [mapFiles, unitFiles] = await Promise.all([
-    readJson<MapSchema[]>(path.join(mapsDir, 'maps.json')),
-    readJson<UnitSchema[]>(path.join(unitsDir, 'units.json')),
+    readJsonWithFallback<MapSchema[]>(mapCandidates),
+    readJsonWithFallback<UnitSchema[]>(unitCandidates),
   ]);
 
   const unitsById = unitFiles.reduce<Record<string, UnitSchema>>((acc, unit) => {
