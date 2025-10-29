@@ -1,10 +1,10 @@
-export * from './constants';
-export * from './messages';
-export * from './hash';
-export * from './commit';
-export * from './simulation';
-export * from './types';
-export * from './utils';
+export * from './constants.js';
+export * from './messages.js';
+export * from './hash.js';
+export * from './commit.js';
+export * from './simulation.js';
+export * from './types.js';
+export * from './utils.js';
 export type {
   MapSchema as DetailedMapSchema,
   MapPolygonPoint,
@@ -15,4 +15,4 @@ export type {
   UnitSchema,
   ProjectileSpec,
   AoeSpec,
-} from './game-data';
+} from './game-data.js';

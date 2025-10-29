@@ -7,11 +7,11 @@ import type {
   UnitAction,
   UnitState,
   Vector2,
-} from './messages';
-import type { UnitSchema } from './game-data';
-import { PHYSICS_CONSTANTS, ROUND_CONFIG } from './constants';
-import { createIdFactory, sumHp } from './utils';
-import type { MapSchema, MinimalSnapshot, RuntimeAoe } from './types';
+} from './messages.js';
+import type { UnitSchema } from './game-data.js';
+import { PHYSICS_CONSTANTS, ROUND_CONFIG } from './constants.js';
+import { createIdFactory, sumHp } from './utils.js';
+import type { MapSchema, MinimalSnapshot, RuntimeAoe } from './types.js';
 
 const UNIT_RADIUS = 0.8;
 const MAX_SIMULATION_MS = 2000;

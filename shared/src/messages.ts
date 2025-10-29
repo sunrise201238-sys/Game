@@ -1,4 +1,4 @@
-import type { MinimalSnapshot } from './types';
+import type { MinimalSnapshot } from './types.js';
 
 export type PlayerRole = 'you' | 'opponent';
 
@@ -179,4 +179,4 @@ export interface MatchSummary {
   oppRemaining: number;
 }
 
-export { MapSchema } from './types';
+export type { MapSchema } from './types.js';
