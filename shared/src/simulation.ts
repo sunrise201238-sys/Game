@@ -16,7 +16,7 @@ import type { MapSchema, MinimalSnapshot, RuntimeAoe } from './types.js';
 const UNIT_RADIUS = 0.8;
 const MAX_SIMULATION_MS = 2000;
 const TIME_STEP = PHYSICS_CONSTANTS.timestepMs / 1000;
-const VELOCITY_SCALE = 0.35;
+const VELOCITY_SCALE = 0.3;
 const GRAVITY = PHYSICS_CONSTANTS.gravity;
 const BASE_FRICTION = PHYSICS_CONSTANTS.baseFriction;
 const BOUNCE = PHYSICS_CONSTANTS.bounceDamping;
@@ -60,12 +60,28 @@ export interface SimulationOutcome {
   next: MatchRuntimeState;
   snapshot: MinimalSnapshot;
   summary?: MatchSummary;
+  frames: SimulationFrame[];
 }
 
 export interface SimulationInput {
   state: MatchRuntimeState;
   actions: Record<PlayerRole, UnitAction | null>;
   actingOrder: PlayerRole[];
+  captureTimeline?: boolean;
+}
+
+export interface SimulationFrameUnit {
+  id: string;
+  type: string;
+  hp: number;
+  position: Vector2;
+  alive: boolean;
+}
+
+export interface SimulationFrame {
+  time: number;
+  you: SimulationFrameUnit[];
+  opponent: SimulationFrameUnit[];
 }
 
 export function cloneRuntime(state: MatchRuntimeState): MatchRuntimeState {
@@ -207,6 +223,27 @@ export function simulateRound(
   const nextProjectileId = createIdFactory(upcomingRound, 'proj');
   const nextAoeId = createIdFactory(upcomingRound, 'aoe');
   let forfeitWinner: PlayerRole | null = null;
+  const captureTimeline = Boolean(input.captureTimeline);
+  const frames: SimulationFrame[] = [];
+  let frameTime = 0;
+  let frameAccumulator = 0;
+
+  const recordFrame = () => {
+    if (!captureTimeline) return;
+    const time = Number(frameTime.toFixed(4));
+    const frame = {
+      time,
+      you: state.teams.you.units.map(toFrameUnit),
+      opponent: state.teams.opponent.units.map(toFrameUnit),
+    } satisfies SimulationFrame;
+    if (frames.length > 0 && frames[frames.length - 1].time === time) {
+      frames[frames.length - 1] = frame;
+      return;
+    }
+    frames.push(frame);
+  };
+
+  recordFrame();
 
   for (const role of input.actingOrder) {
     const action = input.actions[role];
@@ -237,6 +274,12 @@ export function simulateRound(
     const maxSteps = Math.floor(MAX_SIMULATION_MS / PHYSICS_CONSTANTS.timestepMs);
     for (let step = 0; step < maxSteps; step++) {
       integrateUnit(state, unit, stats, diff, collisionDamageTracker, role, opponent, context.unitsById);
+      frameTime += TIME_STEP;
+      frameAccumulator += TIME_STEP;
+      if (frameAccumulator >= FRAME_INTERVAL) {
+        recordFrame();
+        frameAccumulator = 0;
+      }
       if (Math.abs(unit.velocity.x) < 0.01 && Math.abs(unit.velocity.y) < 0.01) {
         break;
       }
@@ -282,6 +325,8 @@ export function simulateRound(
   applyAoeEffects(state, diff);
   applyDotDamage(state, diff, killedUnits);
 
+  recordFrame();
+
   const recorded = new Set<string>();
   for (const role of ['you', 'opponent'] as PlayerRole[]) {
     for (const unit of state.teams[role].units) {
@@ -308,7 +353,19 @@ export function simulateRound(
       : computeMatchSummary(state);
   state.randomSeed = deriveNextSeed(input.state.randomSeed, state.round);
 
-  return { diff, next: state, snapshot, summary };
+  return { diff, next: state, snapshot, summary, frames };
+}
+
+const FRAME_INTERVAL = 1 / 60;
+
+function toFrameUnit(unit: RuntimeUnit): SimulationFrameUnit {
+  return {
+    id: unit.id,
+    type: unit.type,
+    hp: unit.hp,
+    position: { ...unit.position },
+    alive: unit.alive,
+  };
 }
 
 function integrateUnit(

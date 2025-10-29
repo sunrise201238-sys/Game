@@ -14,6 +14,7 @@ import {
   encodeRoundHashPayload,
   type MatchRuntimeState,
   type RuntimeUnit,
+  type SimulationFrame,
 } from '@slingshot/shared';
 
 import { MAPS, UNITS_BY_ID } from './resources';
@@ -40,6 +41,7 @@ export interface ClientState {
 }
 
 export type HashListener = (payload: { round: number; hash: string }) => void;
+export type TimelineListener = (frames: SimulationFrame[]) => void;
 
 const PLAYER_ORDER: PlayerRole[] = ['you', 'opponent'];
 
@@ -59,6 +61,7 @@ export class GameStateManager {
   private actions: Partial<Record<PlayerRole, UnitAction>> = {};
   private pendingOutcome: ReturnType<typeof simulateRound> | null = null;
   private hashListeners: HashListener[] = [];
+  private timelineListeners: TimelineListener[] = [];
   private listeners: Array<(state: ClientState) => void> = [];
 
   subscribe(listener: (state: ClientState) => void) {
@@ -76,6 +79,10 @@ export class GameStateManager {
 
   onHash(listener: HashListener) {
     this.hashListeners.push(listener);
+  }
+
+  onTimeline(listener: TimelineListener) {
+    this.timelineListeners.push(listener);
   }
 
   updateFromServer(message: ServerMessage) {
@@ -246,6 +253,8 @@ export class GameStateManager {
 
   private async computeLocalHash() {
     if (!this.runtime) return;
+    this.state.status = 'resolving';
+    this.emit();
     const context = { map: this.runtime.map, unitsById: UNITS_BY_ID } as const;
     const outcome = simulateRound(context, {
       state: this.runtime,
@@ -254,12 +263,18 @@ export class GameStateManager {
         opponent: this.actions.opponent ?? null,
       },
       actingOrder: this.firstMover === 'you' ? ['you', 'opponent'] : ['opponent', 'you'],
+      captureTimeline: true,
     });
     this.pendingOutcome = outcome;
     const payload = encodeRoundHashPayload(outcome.diff, this.roundSeed);
     const hash = await sha256(payload);
     for (const listener of this.hashListeners) {
       listener({ round: outcome.next.round, hash });
+    }
+    if (outcome.frames.length > 0) {
+      for (const listener of this.timelineListeners) {
+        listener(outcome.frames);
+      }
     }
   }
 

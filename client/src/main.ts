@@ -1,5 +1,6 @@
 import { I18n } from './i18n';
 import { GameStateManager } from './state';
+import type { ClientUnitState } from './state';
 import { Renderer } from './render';
 import { GameSocket } from './network';
 import { serializeCommitPayload } from '@slingshot/shared';
@@ -43,6 +44,10 @@ const powerFillEl = document.getElementById('power-fill')!;
 const canvas = document.getElementById('battle-canvas')! as HTMLCanvasElement;
 const modeBotEl = document.getElementById('mode-bot')! as HTMLButtonElement;
 const modeOnlineEl = document.getElementById('mode-online')! as HTMLButtonElement;
+const teamYouLabel = document.getElementById('team-you-label')!;
+const teamOpponentLabel = document.getElementById('team-opponent-label')!;
+const teamYouList = document.getElementById('team-you-list')! as HTMLUListElement;
+const teamOpponentList = document.getElementById('team-opponent-list')! as HTMLUListElement;
 
 const renderer = new Renderer(canvas);
 let dragStart: { x: number; y: number } | null = null;
@@ -64,7 +69,12 @@ function translateUI() {
   toggleEl.textContent = i18n.t('app.toggle');
   modeBotEl.textContent = i18n.t('ui.playBot');
   modeOnlineEl.textContent = i18n.t('ui.playOnline');
+  teamYouLabel.textContent = i18n.t('ui.teamYou');
+  teamOpponentLabel.textContent = i18n.t('ui.teamOpponent');
   updateModeButtons();
+  const snapshot = state.getSnapshot();
+  updateTeamPanel(teamYouList, snapshot.youUnits, state.getActiveUnitId('you'), 'you');
+  updateTeamPanel(teamOpponentList, snapshot.opponentUnits, state.getActiveUnitId('opponent'), 'opponent');
 }
 
 translateUI();
@@ -99,12 +109,14 @@ state.subscribe((snapshot) => {
       statusMessage = i18n.t('ui.connecting');
       break;
     case 'queueing':
-      statusMessage = i18n.t(mode === 'pve' ? 'ui.queueBot' : 'ui.waiting');
+      statusMessage = i18n.t(mode === 'pve' ? 'ui.queueBot' : 'ui.queueOpponent');
       break;
     case 'ready':
       statusMessage = i18n.t('ui.ready');
       break;
     case 'waiting':
+      statusMessage = i18n.t('ui.waitingTurn');
+      break;
     case 'resolving':
       statusMessage = i18n.t('ui.awaitingReveal');
       break;
@@ -118,6 +130,8 @@ state.subscribe((snapshot) => {
   }
   statusEl.textContent = statusMessage;
   countdownEl.textContent = snapshot.status === 'ready' && snapshot.countdownMs > 0 ? (snapshot.countdownMs / 1000).toFixed(1) : '';
+  updateTeamPanel(teamYouList, snapshot.youUnits, state.getActiveUnitId('you'), 'you');
+  updateTeamPanel(teamOpponentList, snapshot.opponentUnits, state.getActiveUnitId('opponent'), 'opponent');
 });
 
 state.onHash(({ round, hash }) => {
@@ -126,6 +140,10 @@ state.onHash(({ round, hash }) => {
     payload: { round, hash },
   };
   socket.send(message);
+});
+
+state.onTimeline((frames) => {
+  renderer.play(frames);
 });
 
 setInterval(() => {
@@ -204,6 +222,7 @@ canvas.addEventListener('pointerdown', (evt) => {
   dragStart = canvasPos(evt);
   dragVec = { x: 0, y: 0 };
   canvas.setPointerCapture(evt.pointerId);
+  renderer.setAim(dragStart, dragVec);
 });
 
 canvas.addEventListener('pointermove', (evt) => {
@@ -212,6 +231,7 @@ canvas.addEventListener('pointermove', (evt) => {
   dragVec = { x: pos.x - dragStart.x, y: pos.y - dragStart.y };
   const power = Math.min(1, Math.hypot(dragVec.x, dragVec.y) / 240);
   powerFillEl.style.width = `${Math.min(100, Math.abs(power) * 100)}%`;
+  renderer.setAim(dragStart, dragVec);
 });
 
 canvas.addEventListener('pointerup', async (evt) => {
@@ -220,12 +240,19 @@ canvas.addEventListener('pointerup', async (evt) => {
   const pos = canvasPos(evt);
   dragVec = { x: pos.x - dragStart.x, y: pos.y - dragStart.y };
   dragStart = null;
+  renderer.setAim(null);
   const snapshot = stateSnapshot();
   if (snapshot.status !== 'ready') return;
   const unitId = state.getActiveUnitId('you');
   if (!unitId) return;
   const vec = normalizeVector(dragVec);
   await queueAction(unitId, vec, snapshot.round);
+  powerFillEl.style.width = '0%';
+});
+
+canvas.addEventListener('pointercancel', () => {
+  dragStart = null;
+  renderer.setAim(null);
   powerFillEl.style.width = '0%';
 });
 
@@ -241,6 +268,7 @@ async function queueAction(unitId: string, vec: { x: number; y: number }, round:
   pendingAction = { round, action, nonce };
   sendPendingReveal();
   state.setStatus('waiting');
+  state.updateCountdown(0);
 }
 
 function sendPendingReveal() {
@@ -258,10 +286,11 @@ function stateSnapshot() {
 }
 
 function normalizeVector(vec: { x: number; y: number }) {
-  const max = 12;
+  const max = 9;
+  const scale = 1 / 55;
   return {
-    x: clamp(-vec.x / 40, -max, max),
-    y: clamp(-vec.y / 40, -max, max),
+    x: clamp(-vec.x * scale, -max, max),
+    y: clamp(-vec.y * scale, -max, max),
   };
 }
 
@@ -276,4 +305,31 @@ async function sha256(value: string) {
   return Array.from(new Uint8Array(hash))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
+}
+
+function updateTeamPanel(
+  container: HTMLUListElement,
+  units: ClientUnitState[],
+  activeId: string | null,
+  role: 'you' | 'opponent',
+) {
+  container.innerHTML = '';
+  units.forEach((unit) => {
+    const li = document.createElement('li');
+    li.dataset.alive = String(unit.alive);
+    if (unit.id === activeId) {
+      li.dataset.active = 'true';
+    }
+    const name = i18n.t(`unit.${unit.type}`);
+    const hpLabel = i18n.t('ui.hpRemaining', { hp: Math.max(0, Math.round(unit.hp)) });
+    li.innerHTML = `<span>${name}</span><span>${hpLabel}</span>`;
+    container.appendChild(li);
+  });
+
+  if (units.length === 0) {
+    const li = document.createElement('li');
+    li.textContent = role === 'you' ? i18n.t('ui.waitingForMatch') : i18n.t('ui.awaitingOpponent');
+    li.classList.add('placeholder');
+    container.appendChild(li);
+  }
 }
