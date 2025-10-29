@@ -153,18 +153,40 @@ function isOriginPermitted(origin: string | undefined, host: string | undefined,
     return true;
   }
 
-  if (allowedOrigins.includes('*')) {
-    return true;
-  }
+  const normalized = new Set<string>();
 
-  const normalized = new Set(allowedOrigins);
+  for (const entry of allowedOrigins) {
+    const trimmed = entry.trim();
+    if (!trimmed) {
+      continue;
+    }
+    if (trimmed === '*') {
+      return true;
+    }
+    try {
+      const parsed = new URL(trimmed);
+      normalized.add(parsed.origin.toLowerCase());
+    } catch {
+      const withoutTrailingSlash = trimmed.replace(/\/+$/, '').toLowerCase();
+      if (withoutTrailingSlash) {
+        normalized.add(`https://${withoutTrailingSlash}`);
+        normalized.add(`http://${withoutTrailingSlash}`);
+      }
+    }
+  }
 
   if (host) {
-    normalized.add(`https://${host}`);
-    normalized.add(`http://${host}`);
+    const lowerHost = host.toLowerCase();
+    normalized.add(`https://${lowerHost}`);
+    normalized.add(`http://${lowerHost}`);
   }
 
-  return normalized.has(origin);
+  try {
+    const parsedOrigin = new URL(origin);
+    return normalized.has(parsedOrigin.origin.toLowerCase());
+  } catch {
+    return normalized.has(origin.toLowerCase());
+  }
 }
 
 function enqueueTicket(ticket: QueueTicket, resources: Awaited<ReturnType<typeof loadResources>>) {
