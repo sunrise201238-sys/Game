@@ -1,4 +1,5 @@
 import type { ClientState, ClientUnitState } from './state';
+import { MAPS } from './resources';
 
 export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
@@ -40,12 +41,19 @@ export class Renderer {
     gradient.addColorStop(1, '#0b132b');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const bounds = this.getMapBounds();
+    const scale = this.getScale();
+    const offset = this.getOffset(bounds, scale);
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(offset.x, offset.y, bounds.w * scale, bounds.h * scale);
   }
 
   private drawUnits(units: ClientUnitState[], color: string) {
     const { ctx } = this;
+    const scale = this.getScale();
+    const radius = Math.max(10, scale * 0.55);
     units.forEach((unit) => {
-      const radius = 22;
       const { x, y } = this.worldToCanvas(unit.position);
       ctx.globalAlpha = unit.alive ? 1 : 0.4;
       ctx.fillStyle = color;
@@ -53,7 +61,7 @@ export class Renderer {
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#111';
-      ctx.font = '14px Inter';
+      ctx.font = `${Math.max(12, radius * 0.9)}px Inter`;
       ctx.textAlign = 'center';
       ctx.fillText(unit.type.slice(0, 1).toUpperCase(), x, y + 5);
       ctx.globalAlpha = 1;
@@ -72,10 +80,37 @@ export class Renderer {
   }
 
   private worldToCanvas(position: { x: number; y: number }) {
-    const scale = 18;
+    const bounds = this.getMapBounds();
+    const scale = this.getScale();
+    const offset = this.getOffset(bounds, scale);
     return {
-      x: this.canvas.width / 2 + position.x * scale,
-      y: this.canvas.height / 2 + position.y * scale,
+      x: offset.x + position.x * scale,
+      y: offset.y + position.y * scale,
+    };
+  }
+
+  private getMapBounds() {
+    if (!this.state?.mapId) {
+      return { w: 40, h: 24 };
+    }
+    const map = MAPS.find((candidate) => candidate.id === this.state?.mapId);
+    return map?.bounds ?? { w: 40, h: 24 };
+  }
+
+  private getScale() {
+    const bounds = this.getMapBounds();
+    const padding = 0.85;
+    const availableWidth = this.canvas.width * padding;
+    const availableHeight = this.canvas.height * padding;
+    return Math.min(availableWidth / bounds.w, availableHeight / bounds.h);
+  }
+
+  private getOffset(bounds: { w: number; h: number }, scale: number) {
+    const width = bounds.w * scale;
+    const height = bounds.h * scale;
+    return {
+      x: (this.canvas.width - width) / 2,
+      y: (this.canvas.height - height) / 2,
     };
   }
 }

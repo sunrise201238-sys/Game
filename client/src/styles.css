@@ -16,6 +16,7 @@ body {
   min-height: 100vh;
 }
 
+
 .app-header {
   display: flex;
   justify-content: space-between;
@@ -26,14 +27,38 @@ body {
   gap: 1rem;
 }
 
-.bot-link {
-  color: #a5d8ff;
-  text-decoration: none;
-  font-size: 0.9rem;
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
-.bot-link:hover {
-  text-decoration: underline;
+.mode-switch {
+  display: inline-flex;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.25rem;
+  border-radius: 999px;
+}
+
+.mode-button {
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.2s ease, border 0.2s ease;
+}
+
+.mode-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.mode-button.active {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 .app-header h1 {
@@ -41,7 +66,7 @@ body {
   font-size: 1.75rem;
 }
 
-.app-header button {
+.header-controls > button {
   padding: 0.5rem 1rem;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.3);

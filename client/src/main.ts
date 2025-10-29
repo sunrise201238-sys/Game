@@ -5,6 +5,18 @@ import { GameSocket } from './network';
 import { serializeCommitPayload } from '@slingshot/shared';
 import type { ClientMessage } from '@slingshot/shared';
 
+type GameMode = 'pve' | 'pvp';
+
+const urlState = new URL(window.location.href);
+if (!urlState.searchParams.has('mode')) {
+  urlState.searchParams.set('mode', 'pve');
+  window.history.replaceState(null, '', urlState);
+}
+
+function getCurrentMode(): GameMode {
+  return new URL(window.location.href).searchParams.get('mode') === 'pvp' ? 'pvp' : 'pve';
+}
+
 const PLAYER_ID_KEY = 'slingshot.playerId';
 const COMMIT_SALT = import.meta.env.VITE_COMMIT_SALT ?? 'client-salt';
 
@@ -29,7 +41,8 @@ const roundEl = document.getElementById('round')!;
 const countdownEl = document.getElementById('countdown')!;
 const powerFillEl = document.getElementById('power-fill')!;
 const canvas = document.getElementById('battle-canvas')! as HTMLCanvasElement;
-const botLink = document.getElementById('bot-link')! as HTMLAnchorElement;
+const modeBotEl = document.getElementById('mode-bot')! as HTMLButtonElement;
+const modeOnlineEl = document.getElementById('mode-online')! as HTMLButtonElement;
 
 const renderer = new Renderer(canvas);
 let dragStart: { x: number; y: number } | null = null;
@@ -37,10 +50,21 @@ let dragVec: { x: number; y: number } = { x: 0, y: 0 };
 let pendingAction: { round: number; action: { unitId: string; dragVec: { x: number; y: number }; skill?: string }; nonce: string } | null = null;
 let revealOpenedForRound: number | null = null;
 
+function updateModeButtons() {
+  const mode = getCurrentMode();
+  const isBot = mode === 'pve';
+  modeBotEl.classList.toggle('active', isBot);
+  modeOnlineEl.classList.toggle('active', !isBot);
+  modeBotEl.setAttribute('aria-pressed', String(isBot));
+  modeOnlineEl.setAttribute('aria-pressed', String(!isBot));
+}
+
 function translateUI() {
   titleEl.textContent = i18n.t('app.title');
   toggleEl.textContent = i18n.t('app.toggle');
-  botLink.textContent = i18n.t('ui.playBot');
+  modeBotEl.textContent = i18n.t('ui.playBot');
+  modeOnlineEl.textContent = i18n.t('ui.playOnline');
+  updateModeButtons();
 }
 
 translateUI();
@@ -49,24 +73,51 @@ toggleEl.addEventListener('click', () => {
   translateUI();
 });
 
-botLink.addEventListener('click', (event) => {
+modeBotEl.addEventListener('click', (event) => {
   event.preventDefault();
+  if (getCurrentMode() === 'pve') return;
   const url = new URL(window.location.href);
   url.searchParams.set('mode', 'pve');
+  window.location.href = url.toString();
+});
+
+modeOnlineEl.addEventListener('click', (event) => {
+  event.preventDefault();
+  if (getCurrentMode() === 'pvp') return;
+  const url = new URL(window.location.href);
+  url.searchParams.set('mode', 'pvp');
   window.location.href = url.toString();
 });
 
 state.subscribe((snapshot) => {
   renderer.update(snapshot);
   roundEl.textContent = snapshot.round > 0 ? i18n.t('ui.round', { round: snapshot.round }) : '';
-  let statusKey = 'ui.waiting';
-  if (snapshot.status === 'connecting') statusKey = 'ui.connecting';
-  if (snapshot.status === 'ready') statusKey = 'ui.ready';
-  if (snapshot.status === 'finished' && snapshot.summary) {
-    statusKey = 'ui.finished';
+  const mode = getCurrentMode();
+  let statusMessage = i18n.t('ui.waiting');
+  switch (snapshot.status) {
+    case 'connecting':
+      statusMessage = i18n.t('ui.connecting');
+      break;
+    case 'queueing':
+      statusMessage = i18n.t(mode === 'pve' ? 'ui.queueBot' : 'ui.waiting');
+      break;
+    case 'ready':
+      statusMessage = i18n.t('ui.ready');
+      break;
+    case 'waiting':
+    case 'resolving':
+      statusMessage = i18n.t('ui.awaitingReveal');
+      break;
+    case 'finished':
+      statusMessage = snapshot.summary
+        ? i18n.t('ui.finished', { winner: snapshot.summary.winner })
+        : i18n.t('ui.finishedNoWinner');
+      break;
+    default:
+      break;
   }
-  statusEl.textContent = i18n.t(statusKey, snapshot.summary ? { winner: snapshot.summary.winner } : {});
-  countdownEl.textContent = snapshot.countdownMs > 0 ? (snapshot.countdownMs / 1000).toFixed(1) : '';
+  statusEl.textContent = statusMessage;
+  countdownEl.textContent = snapshot.status === 'ready' && snapshot.countdownMs > 0 ? (snapshot.countdownMs / 1000).toFixed(1) : '';
 });
 
 state.onHash(({ round, hash }) => {
@@ -85,7 +136,6 @@ setInterval(() => {
   }
   const next = Math.max(0, snapshot.countdownMs - 100);
   state.updateCountdown(next);
-  countdownEl.textContent = (next / 1000).toFixed(1);
 }, 100);
 
 const configuredWsUrl =
