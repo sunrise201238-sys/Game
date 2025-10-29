@@ -90,10 +90,38 @@ setInterval(() => {
 
 const configuredWsUrl =
   import.meta.env.VITE_WS_URL ?? (import.meta.env as Record<string, string | undefined>).WS_URL;
-const WS_URL = configuredWsUrl && configuredWsUrl.length > 0 ? configuredWsUrl : `ws://${window.location.hostname}:3001`;
+
+function resolveSocketUrl(baseUrl: string | null): string {
+  const search = window.location.search;
+  const appendSearch = (url: string) => {
+    if (!search) return url;
+    return url.includes('?') ? `${url}&${search.slice(1)}` : `${url}${search}`;
+  };
+
+  if (baseUrl && baseUrl.trim().length > 0) {
+    try {
+      const url = new URL(baseUrl);
+      if (search) {
+        const params = new URLSearchParams(search);
+        params.forEach((value, key) => {
+          url.searchParams.set(key, value);
+        });
+      }
+      return url.toString();
+    } catch (_error) {
+      return appendSearch(baseUrl);
+    }
+  }
+
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  const defaultUrl = `${protocol}://${window.location.host}`;
+  return appendSearch(defaultUrl);
+}
+
+const WS_URL = resolveSocketUrl(configuredWsUrl ?? null);
 
 const socket = new GameSocket(
-  WS_URL + window.location.search,
+  WS_URL,
   (message) => {
     if (message.type === 'REVEAL_OPEN') {
       revealOpenedForRound = message.payload.round;
