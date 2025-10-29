@@ -77,7 +77,9 @@ app.get('/admin/metrics', (_req, res) => {
 
 wss.on('connection', async (socket, request) => {
   const origin = request.headers.origin;
-  if (config.allowOrigins.length > 0 && origin && !config.allowOrigins.includes(origin)) {
+  const host = request.headers.host;
+
+  if (!isOriginPermitted(origin, host, config.allowOrigins)) {
     socket.close(1008, 'origin not allowed');
     return;
   }
@@ -137,6 +139,25 @@ function handleJoinQueue(state: ConnectionState, playerId: string, resources: Aw
   };
 
   enqueueTicket(ticket, resources);
+}
+
+function isOriginPermitted(origin: string | undefined, host: string | undefined, allowedOrigins: string[]): boolean {
+  if (!origin || allowedOrigins.length === 0) {
+    return true;
+  }
+
+  if (allowedOrigins.includes('*')) {
+    return true;
+  }
+
+  const normalized = new Set(allowedOrigins);
+
+  if (host) {
+    normalized.add(`https://${host}`);
+    normalized.add(`http://${host}`);
+  }
+
+  return normalized.has(origin);
 }
 
 function enqueueTicket(ticket: QueueTicket, resources: Awaited<ReturnType<typeof loadResources>>) {
