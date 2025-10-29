@@ -45,6 +45,10 @@ const waitingQueue: QueueTicket[] = [];
 const matches = new Map<string, MatchController>();
 const playerToMatch = new Map<string, { controller: MatchController; role: PlayerRole }>();
 
+app.get('/', (_req, res) => {
+  res.type('text/plain').send('Slingshot game server is running. Connect via WebSocket at /ws.');
+});
+
 app.get('/healthz', (_req, res) => {
   res.json({ ok: true, uptime: process.uptime() });
 });
