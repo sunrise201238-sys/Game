@@ -75,7 +75,7 @@ app.get('/admin/metrics', (_req, res) => {
   res.json(analytics.snapshot);
 });
 
-wss.on('connection', async (socket, request) => {
+wss.on('connection', (socket, request) => {
   const origin = request.headers.origin;
   const host = request.headers.host;
 
@@ -84,7 +84,6 @@ wss.on('connection', async (socket, request) => {
     return;
   }
 
-  const resources = await resourcesPromise;
   const url = new URL(request.url ?? '/', 'http://localhost');
   const wantsBot = url.searchParams.get('mode') === 'pve';
   const displayName = url.searchParams.get('name') ?? 'Player';
@@ -97,9 +96,17 @@ wss.on('connection', async (socket, request) => {
   };
 
 
-  socket.on('message', (raw) => {
+  socket.on('message', async (raw) => {
     const message = parseClientMessage(raw.toString());
     if (!message) return;
+    let resources: Awaited<ReturnType<typeof loadResources>>;
+    try {
+      resources = await resourcesPromise;
+    } catch (error) {
+      console.error('Failed to load game resources', error);
+      socket.close(1011, 'server error');
+      return;
+    }
     if (message.type === 'JOIN_QUEUE') {
       handleJoinQueue(state, message.payload.playerId, resources);
       return;
