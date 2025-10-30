@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Slingshot Skirmish</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>Slingshot Skirmish</h1>
+        <div class="mode-toggle" role="group" aria-label="Game mode">
+          <button type="button" data-mode="bot">VS Bot</button>
+          <button type="button" data-mode="hotseat">Hotseat</button>
+        </div>
+        <div class="map-picker">
+          <label for="map-select">Map</label>
+          <select id="map-select" aria-label="Choose battlefield"></select>
+        </div>
+        <button id="restart-btn" type="button">Start New Game</button>
+      </header>
+      <main>
+        <section class="hud">
+          <div class="hud-item">
+            <span class="hud-label">Round</span>
+            <span class="hud-value" id="round-label">Round 1</span>
+          </div>
+          <div class="hud-item">
+            <span class="hud-label">Status</span>
+            <span class="hud-value" id="phase-label">Your turn</span>
+          </div>
+        </section>
+        <section id="board-wrapper">
+          <canvas id="gameCanvas" width="960" height="540"></canvas>
+        </section>
+        <section id="team-panels">
+          <div class="team-card" aria-label="Your squad">
+            <h2 id="team-a-label">Your Squad</h2>
+            <ul id="player-units"></ul>
+          </div>
+          <div class="team-card" aria-label="Bot squad">
+            <h2 id="team-b-label">Bot Squad</h2>
+            <ul id="bot-units"></ul>
+          </div>
+        </section>
+      </main>
+      <footer>
+        <p id="hint-text">Drag your highlighted unit away from where you want it to travel, then release.</p>
+      </footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

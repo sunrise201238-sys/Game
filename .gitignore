@@ -1,0 +1,10 @@
+node_modules
+npm-debug.log*
+dist
+.DS_Store
+.env
+client/dist
+server/dist
+.render-node/
+yarn.lock
+pnpm-lock.yaml

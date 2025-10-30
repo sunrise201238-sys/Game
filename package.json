@@ -1,0 +1,22 @@
+{
+  "name": "slingshot-strategy-monorepo",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server",
+    "shared"
+  ],
+  "scripts": {
+    "bootstrap": "npm install --workspaces --no-audit --no-fund",
+    "build": "npm run build --workspace shared && npm run build --workspace server && npm run build --workspace client",
+    "start": "npm run start --workspace server",
+    "start:server": "npm run start --workspace server",
+    "lint": "npm run lint --workspace client && npm run lint --workspace server",
+    "format": "npm run format --workspace client && npm run format --workspace server"
+  },
+  "engines": {
+    "node": ">=20",
+    "npm": ">=9"
+  },
+  "packageManager": "npm@10"
+}

@@ -1,0 +1,303 @@
+:root {
+  color-scheme: dark;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #0b132b;
+  color: #f3f5fa;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #17233d 0%, #0b132b 55%, #04070f 100%);
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  width: min(1180px, 100vw);
+  min-height: 100vh;
+  padding: 1.5rem 1.5rem 2rem;
+  box-sizing: border-box;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+header h1 {
+  margin: 0;
+  font-size: clamp(1.6rem, 2.4vw, 2.3rem);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(255, 255, 255, 0.07);
+  padding: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.mode-toggle button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  background: transparent;
+  color: inherit;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.mode-toggle button.active,
+.mode-toggle button:hover,
+.mode-toggle button:focus-visible {
+  background: linear-gradient(135deg, rgba(83, 225, 255, 0.95), rgba(255, 111, 145, 0.95));
+  color: #0b132b;
+  box-shadow: 0 4px 16px rgba(83, 225, 255, 0.35);
+  outline: none;
+}
+
+.map-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.map-picker label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.7;
+}
+
+.map-picker select {
+  appearance: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  padding: 0.45rem 2.1rem 0.45rem 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  position: relative;
+  min-width: 180px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.map-picker select:hover,
+.map-picker select:focus {
+  border-color: rgba(83, 225, 255, 0.65);
+  box-shadow: 0 0 12px rgba(83, 225, 255, 0.25);
+  outline: none;
+}
+
+header button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.65rem 1.4rem;
+  background: linear-gradient(135deg, #53e1ff, #ff6f91);
+  color: #0b132b;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(83, 225, 255, 0.2);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+header button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px rgba(83, 225, 255, 0.35);
+}
+
+main {
+  flex: 1;
+  display: grid;
+  gap: 1.25rem;
+}
+
+.hud {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  padding: 1rem 1.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hud-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.hud-label {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.65;
+}
+
+.hud-value {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+#board-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+#gameCanvas {
+  width: 100%;
+  max-width: 960px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(10, 18, 35, 0.85);
+}
+
+#team-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.team-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.9rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.team-card h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.team-card ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.team-card li {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 0.45rem 0.6rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.88rem;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.team-card li.team-0 {
+  border-left: 3px solid rgba(74, 222, 128, 0.65);
+}
+
+.team-card li.team-1 {
+  border-left: 3px solid rgba(249, 115, 22, 0.65);
+}
+
+.team-card li.active {
+  border: 1px solid rgba(83, 225, 255, 0.6);
+  box-shadow: 0 0 14px rgba(83, 225, 255, 0.35);
+}
+
+.team-card li.dead {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+.unit-name,
+.unit-hp {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.86rem;
+}
+
+.unit-name {
+  font-weight: 600;
+}
+
+.unit-hp {
+  opacity: 0.8;
+}
+
+.unit-hp-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.unit-hp-fill {
+  height: 100%;
+  background: linear-gradient(135deg, #4ade80, #22d3ee);
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+
+footer {
+  margin-top: 1.5rem;
+  font-size: 0.9rem;
+  opacity: 0.7;
+}
+
+#hint-text {
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  #app {
+    padding: 1.25rem;
+  }
+
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .map-picker {
+    width: 100%;
+  }
+
+  .map-picker select {
+    width: 100%;
+  }
+
+  header button {
+    align-self: stretch;
+    text-align: center;
+  }
+}
