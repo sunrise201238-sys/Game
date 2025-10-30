@@ -252,44 +252,103 @@ export class Renderer {
     const { ctx } = this;
     ctx.save();
 
-    const baseStroke = state.activeTeam === 0 ? '#bfdbfe' : '#fcd34d';
-    const extensionStroke = state.activeTeam === 0 ? '#38bdf8' : '#fb923c';
+    const hasProjectile = Boolean(activeUnit.def.projectile);
+    const projectileColor = activeUnit.def.projectile?.color;
+    const baseStroke = projectileColor
+      ? this.replaceAlpha(projectileColor, 0.98)
+      : state.activeTeam === 0
+        ? '#bfdbfe'
+        : '#fcd34d';
+    const glowColor = projectileColor
+      ? this.replaceAlpha(projectileColor, 0.8)
+      : state.activeTeam === 0
+        ? 'rgba(191,219,254,0.75)'
+        : 'rgba(252,211,77,0.75)';
+    const accent = '#ffffff';
+
+    const actualEnd = extensionEnd ?? previewEnd;
+    const actualDistance = Math.hypot(actualEnd.x - dragOrigin.x, actualEnd.y - dragOrigin.y);
+    const longDistance = hasProjectile
+      ? this.computeAimGuideLength(dragOrigin, launchDir, actualDistance)
+      : actualDistance;
+    const longEnd = hasProjectile ? addVectors(dragOrigin, scale(launchDir, longDistance)) : actualEnd;
 
     ctx.globalCompositeOperation = 'source-over';
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = baseStroke;
+    ctx.globalAlpha = 1;
+    ctx.lineCap = 'round';
     ctx.setLineDash([]);
+
     ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
+    ctx.globalAlpha = 0.75;
+    ctx.strokeStyle = this.replaceAlpha(glowColor, 0.6);
+    ctx.lineWidth = 12;
+    ctx.beginPath();
+    ctx.moveTo(dragOrigin.x, dragOrigin.y);
+    ctx.lineTo(previewEnd.x, previewEnd.y);
+    ctx.stroke();
+
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 22;
+    ctx.shadowColor = glowColor;
+    const gradient = ctx.createLinearGradient(dragOrigin.x, dragOrigin.y, previewEnd.x, previewEnd.y);
+    gradient.addColorStop(0, accent);
+    gradient.addColorStop(0.5, baseStroke);
+    gradient.addColorStop(1, this.replaceAlpha(baseStroke, 0.92));
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = 6;
     ctx.beginPath();
     ctx.moveTo(dragOrigin.x, dragOrigin.y);
     ctx.lineTo(previewEnd.x, previewEnd.y);
     ctx.stroke();
 
     if (extensionEnd) {
-      ctx.strokeStyle = extensionStroke;
-      ctx.lineWidth = 3;
-      ctx.setLineDash([6, 6]);
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = glowColor;
+      ctx.lineWidth = 4.2;
+      ctx.strokeStyle = this.replaceAlpha(baseStroke, 0.85);
+      ctx.setLineDash([10, 8]);
       ctx.beginPath();
       ctx.moveTo(previewEnd.x, previewEnd.y);
       ctx.lineTo(extensionEnd.x, extensionEnd.y);
       ctx.stroke();
     }
 
-    ctx.setLineDash([]);
-    const arrowTarget = extensionEnd ?? previewEnd;
-    const arrowHead = addVectors(arrowTarget, scale(launchDir, 20));
-    ctx.fillStyle = baseStroke;
-    ctx.beginPath();
-    ctx.moveTo(arrowHead.x, arrowHead.y);
-    ctx.lineTo(arrowHead.x + launchDir.y * 8, arrowHead.y - launchDir.x * 8);
-    ctx.lineTo(arrowHead.x - launchDir.y * 8, arrowHead.y + launchDir.x * 8);
-    ctx.closePath();
-    ctx.fill();
+    if (hasProjectile) {
+      const longStart = extensionEnd ?? previewEnd;
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
+      ctx.globalAlpha = 0.5;
+      ctx.lineWidth = 3.2;
+      ctx.setLineDash([18, 14]);
+      ctx.strokeStyle = this.replaceAlpha(glowColor, 0.5);
+      ctx.beginPath();
+      ctx.moveTo(longStart.x, longStart.y);
+      ctx.lineTo(longEnd.x, longEnd.y);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
 
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.setLineDash([]);
+
+    const arrowTarget = extensionEnd ?? previewEnd;
+    const primaryTip = addVectors(arrowTarget, scale(launchDir, 14));
+    this.drawArrowHead(primaryTip, launchDir, 14, baseStroke, 1, glowColor, 18);
+
+    if (hasProjectile) {
+      const ghostTip = addVectors(longEnd, scale(launchDir, 10));
+      this.drawArrowHead(ghostTip, launchDir, 10, this.replaceAlpha(glowColor, 0.75), 0.55);
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
     ctx.beginPath();
-    ctx.arc(dragOrigin.x, dragOrigin.y, 6, 0, Math.PI * 2);
+    ctx.arc(dragOrigin.x, dragOrigin.y, 7, 0, Math.PI * 2);
     ctx.fill();
+    ctx.lineWidth = 2.2;
+    ctx.strokeStyle = this.replaceAlpha(baseStroke, 0.8);
+    ctx.stroke();
 
     if (activeUnit.def.aoe) {
       const spec = activeUnit.def.aoe;
@@ -315,6 +374,60 @@ export class Renderer {
       ctx.stroke();
       ctx.restore();
     }
+    ctx.restore();
+  }
+
+  private computeAimGuideLength(origin: Vector, direction: Vector, minimum: number): number {
+    const EPSILON = 1e-3;
+    const { width, height } = this.map;
+    const candidates: number[] = [];
+
+    if (Math.abs(direction.x) > EPSILON) {
+      const right = (width - origin.x) / direction.x;
+      const left = -origin.x / direction.x;
+      if (right > 0) candidates.push(right);
+      if (left > 0) candidates.push(left);
+    }
+
+    if (Math.abs(direction.y) > EPSILON) {
+      const bottom = (height - origin.y) / direction.y;
+      const top = -origin.y / direction.y;
+      if (bottom > 0) candidates.push(bottom);
+      if (top > 0) candidates.push(top);
+    }
+
+    if (!candidates.length) {
+      return Math.max(minimum + 220, Math.hypot(width, height));
+    }
+
+    const boundaryDistance = Math.min(...candidates);
+    const margin = Math.max(240, boundaryDistance * 0.2);
+    return Math.max(minimum + margin * 0.5, boundaryDistance + margin);
+  }
+
+  private drawArrowHead(
+    tip: Vector,
+    direction: Vector,
+    size: number,
+    color: string,
+    alpha = 1,
+    shadowColor?: string,
+    shadowBlur = 0
+  ): void {
+    const { ctx } = this;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(tip.x, tip.y);
+    ctx.rotate(Math.atan2(direction.y, direction.x));
+    ctx.shadowColor = shadowColor ?? 'transparent';
+    ctx.shadowBlur = shadowBlur;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-size, size * 0.6);
+    ctx.lineTo(-size, -size * 0.6);
+    ctx.closePath();
+    ctx.fill();
     ctx.restore();
   }
 
