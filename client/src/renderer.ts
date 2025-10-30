@@ -235,7 +235,7 @@ export class Renderer {
     if (activeUnit.def.id === 'archer') {
       const targetAngle = Math.atan2(launchDir.y, launchDir.x);
       const previous = this.lastAimAngles.get(activeUnit.id);
-      const eased = previous !== undefined ? this.easeAngle(previous, targetAngle, 0.25) : targetAngle;
+      const eased = previous !== undefined ? this.easeAngle(previous, targetAngle, 0.05) : targetAngle;
       this.lastAimAngles.set(activeUnit.id, eased);
       launchDir = { x: Math.cos(eased), y: Math.sin(eased) };
     } else {
@@ -353,7 +353,7 @@ export class Renderer {
     ctx.save();
     ctx.translate(unit.position.x, unit.position.y);
     if (highlight) {
-      ctx.shadowBlur = 18;
+      ctx.shadowBlur = 22;
       ctx.shadowColor = strokeColor;
     }
 
@@ -388,37 +388,44 @@ export class Renderer {
     const { ctx } = this;
     ctx.save();
     ctx.translate(unit.position.x, unit.position.y);
+    const baseRadius = unit.def.radius + 10;
+    const gradient = ctx.createRadialGradient(0, 0, unit.def.radius * 0.4, 0, 0, baseRadius + 6);
+    gradient.addColorStop(0, this.replaceAlpha(auraColor, 0.45));
+    gradient.addColorStop(1, this.replaceAlpha(auraColor, 0));
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(0, 0, baseRadius + 6, 0, Math.PI * 2);
+    ctx.fill();
+
     ctx.strokeStyle = auraColor;
     ctx.lineWidth = 6;
-    ctx.globalAlpha = 0.9;
+    ctx.globalAlpha = 0.95;
     ctx.beginPath();
-    ctx.arc(0, 0, unit.def.radius + 8, 0, Math.PI * 2);
+    ctx.arc(0, 0, baseRadius, 0, Math.PI * 2);
     ctx.stroke();
 
     ctx.setLineDash([6, 6]);
-    ctx.lineWidth = 2.5;
-    ctx.strokeStyle = this.replaceAlpha(auraColor, 0.7);
+    ctx.lineWidth = 2.8;
+    ctx.strokeStyle = this.replaceAlpha(auraColor, 0.75);
     ctx.beginPath();
-    ctx.arc(0, 0, unit.def.radius + 12, 0, Math.PI * 2);
+    ctx.arc(0, 0, baseRadius + 6, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
 
   private traceArcherShape(radius: number, orientation: number): void {
-    const base: Vector[] = [
-      { x: radius, y: 0 },
-      { x: -radius * 0.72, y: radius * 0.9 },
-      { x: -radius * 0.52, y: 0 },
-      { x: -radius * 0.72, y: -radius * 0.9 },
-    ];
-    base.forEach((point, index) => {
-      const rotated = this.rotatePoint(point, orientation);
-      if (index === 0) {
-        this.ctx.moveTo(rotated.x, rotated.y);
+    for (let i = 0; i < 3; i += 1) {
+      const angle = orientation + i * ((2 * Math.PI) / 3);
+      const point = {
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius,
+      };
+      if (i === 0) {
+        this.ctx.moveTo(point.x, point.y);
       } else {
-        this.ctx.lineTo(rotated.x, rotated.y);
+        this.ctx.lineTo(point.x, point.y);
       }
-    });
+    }
     this.ctx.closePath();
   }
 
