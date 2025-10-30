@@ -143,7 +143,7 @@ export class GameStateManager {
     if (this.pendingOutcome) return false;
     if (this.actions[role]) return false;
     if (this.previewMode === 'full') return false;
-    if (this.previewMode === 'partial' && this.previewActor && this.previewActor !== role) {
+    if (this.previewMode === 'partial' && this.previewActor === role) {
       return false;
     }
     return true;
