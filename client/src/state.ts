@@ -15,6 +15,7 @@ import {
   type MatchRuntimeState,
   type RuntimeUnit,
   type SimulationFrame,
+  type SimulationFrameUnit,
 } from '@slingshot/shared';
 
 import { MAPS, UNITS_BY_ID } from './resources';
@@ -251,7 +252,7 @@ export class GameStateManager {
     const hadFullPreview = this.previewMode === 'full' && this.previewRound === message.payload.round;
     const hadPartialPreview = this.previewMode === 'partial' && this.previewRound === message.payload.round;
     const previousPreviewActor = this.previewActor;
-    const previousPreviewCutoff = this.previewLastTime;
+    const previousPreviewTimeline = this.previewTimeline;
     if (pending && pending.next.round === message.payload.round) {
       this.runtime = pending.next;
     } else {
@@ -282,13 +283,14 @@ export class GameStateManager {
     let fallbackTimeline = message.payload.timeline ?? [];
     if (hadLocalTimeline || hadFullPreview) {
       fallbackTimeline = [];
-    } else if (hadPartialPreview && fallbackTimeline.length > 0 && this.runtime) {
-      fallbackTimeline = filterTimelineAfterPreview(
+    } else if (hadPartialPreview && fallbackTimeline.length > 0 && previousPreviewTimeline?.length) {
+      fallbackTimeline = buildContinuationTimeline(
+        previousPreviewTimeline,
         fallbackTimeline,
         previousPreviewActor,
-        previousPreviewCutoff,
-        this.runtime,
       );
+    } else if (fallbackTimeline.length > 0) {
+      fallbackTimeline = normalizeTimeline(fallbackTimeline, fallbackTimeline[0]?.time ?? 0);
     }
     if (fallbackTimeline.length > 0) {
       for (const listener of this.timelineListeners) {
@@ -484,42 +486,84 @@ async function sha256(value: string) {
     .join('');
 }
 
-function filterTimelineAfterPreview(
-  frames: SimulationFrame[],
+function buildContinuationTimeline(
+  previewFrames: SimulationFrame[],
+  fallbackFrames: SimulationFrame[],
   actor: PlayerRole | 'both' | null,
-  cutoffTime: number,
-  runtime: MatchRuntimeState,
 ): SimulationFrame[] {
-  if (!frames.length) {
-    return frames;
-  }
-  const normalizedCutoff = Number.isFinite(cutoffTime) ? cutoffTime : 0;
-  if (!actor || actor === 'both') {
-    return normalizeTimeline(frames, frames[0]?.time ?? 0);
-  }
-  const epsilon = 1 / 240;
-  const filtered = frames.filter((frame) => {
-    if (frame.time <= normalizedCutoff + epsilon && (frame.phase === actor || frame.phase === 'setup')) {
-      return false;
-    }
-    return frame.time >= normalizedCutoff - epsilon;
-  });
-  if (filtered.length === 0) {
+  if (!fallbackFrames.length || !previewFrames.length) {
     return [];
   }
-  return filtered.map((frame, index) => ({
-    ...frame,
-    time: index === 0 ? 0 : Number(Math.max(0, frame.time - normalizedCutoff).toFixed(4)),
+  if (actor !== 'you' && actor !== 'opponent') {
+    return normalizeTimeline(fallbackFrames, fallbackFrames[0]?.time ?? 0);
+  }
+  const other: PlayerRole = actor === 'you' ? 'opponent' : 'you';
+  const startIndex = fallbackFrames.findIndex((frame) => frame.phase === other);
+  if (startIndex === -1) {
+    return [];
+  }
+  const baseTime = fallbackFrames[startIndex].time;
+  const normalized = fallbackFrames.slice(startIndex).map((frame) => ({
+    phase: frame.phase,
+    time: Number(Math.max(0, frame.time - baseTime).toFixed(4)),
+    you: cloneFrameUnits(frame.you),
+    opponent: cloneFrameUnits(frame.opponent),
   }));
+
+  const lastPreview = previewFrames[previewFrames.length - 1];
+  const frames: SimulationFrame[] = [
+    {
+      phase: lastPreview.phase,
+      time: 0,
+      you: cloneFrameUnits(lastPreview.you),
+      opponent: cloneFrameUnits(lastPreview.opponent),
+    },
+  ];
+
+  let lastTime = 0;
+  const epsilon = 1 / 120;
+  for (const frame of normalized) {
+    const adjustedTime = Math.max(frame.time, lastTime + epsilon);
+    frames.push({
+      phase: frame.phase,
+      time: Number(adjustedTime.toFixed(4)),
+      you: frame.you,
+      opponent: frame.opponent,
+    });
+    lastTime = adjustedTime;
+  }
+
+  return frames;
 }
 
 function normalizeTimeline(frames: SimulationFrame[], offset: number): SimulationFrame[] {
   if (!frames.length) return frames;
   const base = Number.isFinite(offset) ? offset : frames[0].time;
-  if (!base) return frames;
+  if (!Number.isFinite(base)) return frames.map(cloneFrameWithTime);
   return frames.map((frame) => ({
-    ...frame,
+    phase: frame.phase,
     time: Number(Math.max(0, frame.time - base).toFixed(4)),
+    you: cloneFrameUnits(frame.you),
+    opponent: cloneFrameUnits(frame.opponent),
+  }));
+}
+
+function cloneFrameWithTime(frame: SimulationFrame): SimulationFrame {
+  return {
+    phase: frame.phase,
+    time: Number(Math.max(0, frame.time).toFixed(4)),
+    you: cloneFrameUnits(frame.you),
+    opponent: cloneFrameUnits(frame.opponent),
+  };
+}
+
+function cloneFrameUnits(units: SimulationFrameUnit[]): SimulationFrameUnit[] {
+  return units.map((unit) => ({
+    id: unit.id,
+    type: unit.type,
+    hp: unit.hp,
+    alive: unit.alive,
+    position: { ...unit.position },
   }));
 }
 
