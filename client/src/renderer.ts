@@ -21,7 +21,6 @@ export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private map: MapDefinition;
   private dpr = window.devicePixelRatio || 1;
-  private lastAimAngles = new Map<string, number>();
 
   constructor(canvas: HTMLCanvasElement, map: MapDefinition) {
     const ctx = canvas.getContext('2d');
@@ -219,7 +218,6 @@ export class Renderer {
   private drawDragIndicator(state: GameState, options: RenderOptions): void {
     const { dragOrigin, dragCurrent } = options;
     if (!dragOrigin || !dragCurrent) {
-      this.lastAimAngles.clear();
       return;
     }
     const nextId = this.getUpcomingUnitId(state, state.activeTeam);
@@ -231,20 +229,10 @@ export class Renderer {
     if (dragDistance < 2) return;
 
     const clampedPower = Math.min(activeUnit.def.maxPower, dragDistance);
-    let launchDir = normalize(dragVector);
-    if (activeUnit.def.id === 'archer') {
-      const targetAngle = Math.atan2(launchDir.y, launchDir.x);
-      const previous = this.lastAimAngles.get(activeUnit.id);
-      const eased = previous !== undefined ? this.easeAngle(previous, targetAngle, 0.05) : targetAngle;
-      this.lastAimAngles.set(activeUnit.id, eased);
-      launchDir = { x: Math.cos(eased), y: Math.sin(eased) };
-    } else {
-      this.lastAimAngles.delete(activeUnit.id);
-    }
+    const launchDir = normalize(dragVector);
     let previewDistance = clampedPower * 1.2;
     if (activeUnit.def.projectile) {
-      const maxDist = activeUnit.def.projectile.maxDistance;
-      previewDistance = Math.max(previewDistance, maxDist * 0.95);
+      previewDistance = activeUnit.def.projectile.maxDistance;
     }
     const previewEnd = addVectors(dragOrigin, scale(launchDir, previewDistance));
 
@@ -450,11 +438,6 @@ export class Renderer {
       x: point.x * cos - point.y * sin,
       y: point.x * sin + point.y * cos,
     };
-  }
-
-  private easeAngle(previous: number, target: number, amount: number): number {
-    const delta = Math.atan2(Math.sin(target - previous), Math.cos(target - previous));
-    return previous + delta * amount;
   }
 
   private parseColor(input: string): { r: number; g: number; b: number } {

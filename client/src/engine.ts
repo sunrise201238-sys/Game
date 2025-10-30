@@ -966,8 +966,8 @@ export class GameEngine {
 
     this.loadout.forEach((unitId, index) => {
       const def = getUnitDefinition(unitId);
-      const playerSpawn = map.playerSpawns[index % map.playerSpawns.length];
-      const botSpawn = map.botSpawns[index % map.botSpawns.length];
+      const playerSpawn = this.ensureSafeSpawn(map.playerSpawns[index % map.playerSpawns.length], def.radius);
+      const botSpawn = this.ensureSafeSpawn(map.botSpawns[index % map.botSpawns.length], def.radius);
       units.push(createUnit(def, PLAYER_TEAM, playerSpawn, index));
       units.push(createUnit(def, BOT_TEAM, botSpawn, index));
     });
@@ -1009,5 +1009,55 @@ export class GameEngine {
       })
       .map((unit) => unit.id);
     return { queue, nextIndex: 0 };
+  }
+
+  private ensureSafeSpawn(base: Vector, radius: number): Vector {
+    const candidate: Vector = { x: base.x, y: base.y };
+    const hazards = [...this.map.lakes, ...this.map.walls];
+    const margin = 4;
+    const clampWithinBounds = () => {
+      candidate.x = Math.min(this.map.width - radius - margin, Math.max(radius + margin, candidate.x));
+      candidate.y = Math.min(this.map.height - radius - margin, Math.max(radius + margin, candidate.y));
+    };
+
+    clampWithinBounds();
+    for (let iter = 0; iter < 8; iter += 1) {
+      let adjusted = false;
+      for (const hazard of hazards) {
+        const left = hazard.x - radius - margin;
+        const right = hazard.x + hazard.width + radius + margin;
+        const top = hazard.y - radius - margin;
+        const bottom = hazard.y + hazard.height + radius + margin;
+        if (candidate.x > left && candidate.x < right && candidate.y > top && candidate.y < bottom) {
+          const distances = [
+            { side: 'left' as const, value: candidate.x - left },
+            { side: 'right' as const, value: right - candidate.x },
+            { side: 'top' as const, value: candidate.y - top },
+            { side: 'bottom' as const, value: bottom - candidate.y },
+          ];
+          const nearest = distances.reduce((min, current) => (current.value < min.value ? current : min), distances[0]);
+          switch (nearest.side) {
+            case 'left':
+              candidate.x = left - margin;
+              break;
+            case 'right':
+              candidate.x = right + margin;
+              break;
+            case 'top':
+              candidate.y = top - margin;
+              break;
+            case 'bottom':
+              candidate.y = bottom + margin;
+              break;
+          }
+          adjusted = true;
+        }
+      }
+      clampWithinBounds();
+      if (!adjusted) {
+        break;
+      }
+    }
+    return candidate;
   }
 }
