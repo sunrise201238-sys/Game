@@ -3,47 +3,43 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Round Slingshot Duel</title>
+    <title>Slingshot Skirmish</title>
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
     <div id="app">
-      <header class="app-header">
-        <h1 id="title"></h1>
-        <div class="header-controls">
-          <button id="language-toggle" type="button"></button>
-          <div class="mode-switch">
-            <button id="mode-bot" type="button" class="mode-button"></button>
-            <button id="mode-online" type="button" class="mode-button"></button>
-          </div>
-        </div>
+      <header>
+        <h1>Slingshot Skirmish</h1>
+        <button id="restart-btn" type="button">Start New Game</button>
       </header>
       <main>
         <section class="hud">
-          <div class="status" id="status"></div>
-          <div class="round" id="round"></div>
-          <div class="power-bar">
-            <div class="fill" id="power-fill"></div>
+          <div class="hud-item">
+            <span class="hud-label">Round</span>
+            <span class="hud-value" id="round-label">Round 1</span>
           </div>
-          <div class="countdown" id="countdown"></div>
-          <p class="mode-description" id="mode-description"></p>
-          <div class="hud-actions">
-            <p class="instructions" id="instructions"></p>
-            <button id="play-again" type="button" class="primary"></button>
+          <div class="hud-item">
+            <span class="hud-label">Status</span>
+            <span class="hud-value" id="phase-label">Your turn</span>
           </div>
         </section>
-        <section class="teams">
-          <div class="team-panel" id="team-you">
-            <h2 class="team-title" id="team-you-label"></h2>
-            <ul class="team-list" id="team-you-list"></ul>
+        <section id="board-wrapper">
+          <canvas id="gameCanvas" width="960" height="540"></canvas>
+        </section>
+        <section id="team-panels">
+          <div class="team-card" aria-label="Your squad">
+            <h2>Your Squad</h2>
+            <ul id="player-units"></ul>
           </div>
-          <div class="team-panel" id="team-opponent">
-            <h2 class="team-title" id="team-opponent-label"></h2>
-            <ul class="team-list" id="team-opponent-list"></ul>
+          <div class="team-card" aria-label="Bot squad">
+            <h2>Bot Squad</h2>
+            <ul id="bot-units"></ul>
           </div>
         </section>
-        <canvas id="battle-canvas" width="960" height="540"></canvas>
       </main>
+      <footer>
+        <p id="hint-text">Drag your highlighted unit away from where you want it to travel, then release.</p>
+      </footer>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

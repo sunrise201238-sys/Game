@@ -12,7 +12,6 @@ export default defineConfig({
   resolve: {
     alias: {
       '@slingshot/shared': resolve(__dirname, '../shared/src/index.ts'),
-      '@i18n': resolve(__dirname, '../i18n'),
     },
   },
   define: {

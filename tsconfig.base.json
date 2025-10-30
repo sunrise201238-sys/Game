@@ -10,8 +10,7 @@
     "baseUrl": ".",
     "paths": {
       "@slingshot/shared": ["shared/src"],
-      "@slingshot/shared/*": ["shared/src/*"],
-      "@i18n/*": ["i18n/*"]
+      "@slingshot/shared/*": ["shared/src/*"]
     }
   }
 }
