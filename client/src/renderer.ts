@@ -138,9 +138,11 @@ export class Renderer {
     };
 
     for (const unit of state.units) {
+      if (!unit.alive) {
+        continue;
+      }
       const radius = unit.def.radius;
-      const alpha = unit.alive ? 1 : 0.25;
-      ctx.fillStyle = this.hexToRgba(unit.def.color, alpha);
+      ctx.fillStyle = this.hexToRgba(unit.def.color, 1);
       ctx.beginPath();
       ctx.arc(unit.position.x, unit.position.y, radius, 0, Math.PI * 2);
       ctx.fill();
@@ -148,7 +150,6 @@ export class Renderer {
       const isHighlight = Boolean(
         highlightId &&
           unit.id === highlightId &&
-          unit.alive &&
           state.activeTeam === unit.team &&
           state.phase !== 'ended'
       );
@@ -165,10 +166,7 @@ export class Renderer {
       ctx.arc(unit.position.x, unit.position.y, radius, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
-
-      if (unit.alive) {
-        this.drawHpBar(unit);
-      }
+      this.drawHpBar(unit);
     }
   }
 

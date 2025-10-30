@@ -1,5 +1,5 @@
 import { GAME_CONSTANTS, TEAM_LOADOUT, getUnitDefinition } from './config';
-import { add, clampMagnitude, distance, length, normalize, scale, subtract } from './math';
+import { add, clampMagnitude, distance, length, normalize, rotate, scale, subtract } from './math';
 import type {
   DragAction,
   GameState,
@@ -42,6 +42,13 @@ interface ProjectileState {
 }
 
 type ZoneClone = ZoneState;
+
+interface UnitSnapshot {
+  hp: number;
+  alive: boolean;
+  team: TeamId;
+  position: Vector;
+}
 
 export class GameEngine {
   private state: GameState;
@@ -691,21 +698,193 @@ export class GameEngine {
 
   private createBotAction(unit: UnitState): DragAction {
     const enemies = this.state.units.filter((u) => u.team === PLAYER_TEAM && u.alive);
-    if (enemies.length === 0) {
-      return { unitId: unit.id, vector: { x: -unit.def.maxPower, y: 0 }, power: unit.def.maxPower };
-    }
-    const target = enemies.reduce((closest, current) => {
-      const distCurrent = distance(unit.position, current.position);
-      const distClosest = distance(unit.position, closest.position);
-      return distCurrent < distClosest ? current : closest;
-    });
-    const aimVec = subtract(target.position, unit.position);
-    const drag = clampMagnitude(aimVec, unit.def.maxPower);
-    return {
+    const fallbackVector = clampMagnitude({ x: -unit.def.maxPower, y: 0 }, unit.def.maxPower);
+    const fallback: DragAction = {
       unitId: unit.id,
-      vector: drag,
-      power: length(drag),
+      vector: fallbackVector,
+      power: length(fallbackVector),
     };
+
+    if (enemies.length === 0) {
+      return fallback;
+    }
+
+    const baseline = this.snapshotUnits();
+    const candidates = this.generateBotCandidates(unit, enemies);
+    let bestAction: DragAction = fallback;
+    let bestScore = -Infinity;
+
+    for (const vector of candidates) {
+      const power = length(vector);
+      if (power < 1) continue;
+      const action: DragAction = { unitId: unit.id, vector, power };
+      const score = this.evaluateBotCandidate(unit, action, baseline);
+      if (score > bestScore) {
+        bestScore = score;
+        bestAction = action;
+      }
+    }
+
+    return bestScore === -Infinity ? fallback : bestAction;
+  }
+
+  private generateBotCandidates(unit: UnitState, enemies: UnitState[]): Vector[] {
+    const candidates: Vector[] = [];
+    const seen = new Set<string>();
+    const push = (vector: Vector) => {
+      const clamped = clampMagnitude(vector, unit.def.maxPower);
+      if (length(clamped) < 4) return;
+      const key = `${Math.round(clamped.x)}:${Math.round(clamped.y)}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      candidates.push(clamped);
+    };
+
+    push({ x: -unit.def.maxPower, y: 0 });
+
+    let nearest: UnitState | null = null;
+    let nearestDist = Infinity;
+
+    for (const enemy of enemies) {
+      const diff = subtract(enemy.position, unit.position);
+      const baseDist = length(diff);
+      if (baseDist === 0) continue;
+      if (baseDist < nearestDist) {
+        nearestDist = baseDist;
+        nearest = enemy;
+      }
+      const baseDir = normalize(diff);
+      const stride = Math.max(baseDist, unit.def.maxPower * 0.75);
+      push(scale(baseDir, stride));
+
+      const offsets = [Math.PI / 10, -Math.PI / 10, Math.PI / 6, -Math.PI / 6];
+      for (const angle of offsets) {
+        const rotated = rotate(baseDir, angle);
+        push(scale(rotated, stride));
+      }
+
+      if (this.map.lakes.length) {
+        for (const lake of this.map.lakes) {
+          const center = { x: lake.x + lake.width / 2, y: lake.y + lake.height / 2 };
+          const towardHazard = normalize(subtract(center, enemy.position));
+          if (length(towardHazard) === 0) continue;
+          const blended = normalize(add(baseDir, towardHazard));
+          if (length(blended) === 0) continue;
+          push(scale(blended, Math.max(stride, unit.def.maxPower * 0.85)));
+        }
+      }
+    }
+
+    if (nearest) {
+      const retreat = normalize(subtract(unit.position, nearest.position));
+      if (length(retreat) > 0) {
+        push(scale(retreat, unit.def.maxPower * 0.6));
+      }
+    }
+
+    push({ x: -unit.def.maxPower * 0.6, y: unit.def.maxPower * 0.35 });
+    push({ x: -unit.def.maxPower * 0.6, y: -unit.def.maxPower * 0.35 });
+
+    return candidates;
+  }
+
+  private evaluateBotCandidate(unit: UnitState, action: DragAction, baseline: Map<string, UnitSnapshot>): number {
+    const savedProjectile = this.projectileCounter;
+    const savedZone = this.zoneCounter;
+    const result = this.simulateAction(action);
+    this.projectileCounter = savedProjectile;
+    this.zoneCounter = savedZone;
+    return this.scoreSimulation(unit, baseline, result);
+  }
+
+  private scoreSimulation(unit: UnitState, baseline: Map<string, UnitSnapshot>, result: SimulationResult): number {
+    const actingTeam = unit.team;
+    let score = 0;
+    const finalLookup = new Map(result.finalUnits.map((entry) => [entry.id, entry]));
+
+    for (const [id, before] of baseline.entries()) {
+      const after = finalLookup.get(id);
+      if (!after) continue;
+      const delta = before.hp - after.hp;
+      if (before.team !== actingTeam) {
+        if (delta > 0) {
+          score += delta * 2.4;
+        }
+        if (before.alive && !after.alive) {
+          score += 500;
+        }
+      } else {
+        if (delta > 0) {
+          score -= delta * 1.7;
+        }
+        if (before.alive && !after.alive) {
+          score -= 650;
+        }
+      }
+    }
+
+    for (const status of result.inflictedStatuses) {
+      const before = baseline.get(status.unitId);
+      if (!before) continue;
+      const projected = status.damagePerTurn * status.remainingTurns;
+      if (before.team !== actingTeam) {
+        score += projected * 1.2;
+      } else {
+        score -= projected * 1.2;
+      }
+    }
+
+    for (const zone of result.zonesToAdd) {
+      let coverage = 0;
+      for (const after of result.finalUnits) {
+        if (!after.alive || after.team === actingTeam) continue;
+        if (distance(after.position, zone.center) <= zone.radius + after.def.radius) {
+          coverage += 1;
+        }
+      }
+      if (coverage > 0) {
+        score += coverage * zone.dotDamage * zone.dotDuration * 1.1;
+      }
+    }
+
+    const actorFinal = finalLookup.get(unit.id);
+    if (!actorFinal || !actorFinal.alive) {
+      score -= 700;
+    } else {
+      if (!this.pointInsideCircleBounds(actorFinal.position, actorFinal.def.radius)) {
+        score -= 500;
+      }
+      if (this.isInHazard(actorFinal.position)) {
+        score -= 400;
+      }
+    }
+
+    for (const after of result.finalUnits) {
+      if (after.team !== actingTeam || after.id === unit.id) continue;
+      const before = baseline.get(after.id);
+      if (!before) continue;
+      if (after.hp < before.hp) {
+        score -= (before.hp - after.hp) * 1.2;
+      }
+      if (before.alive && !after.alive) {
+        score -= 400;
+      }
+    }
+
+    return score;
+  }
+
+  private snapshotUnits(): Map<string, UnitSnapshot> {
+    const map = new Map<string, UnitSnapshot>();
+    for (const unit of this.state.units) {
+      map.set(unit.id, {
+        hp: unit.hp,
+        alive: unit.alive,
+        team: unit.team,
+        position: { ...unit.position },
+      });
+    }
+    return map;
   }
 
   private emitState(): void {

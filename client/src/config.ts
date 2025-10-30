@@ -47,7 +47,7 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
     aoe: {
       radius: 90,
       duration: 4,
-      dotDamage: 6,
+      dotDamage: 2,
       dotDuration: 3,
       placementRange: 260,
       travelScale: 1.15,
@@ -61,6 +61,29 @@ const UNIT_LOOKUP = new Map(UNIT_DEFINITIONS.map((def) => [def.id, def]));
 export const TEAM_LOADOUT: string[] = ['soldier', 'soldier', 'archer', 'archer', 'mage'];
 
 export const MAPS: MapDefinition[] = [
+  {
+    id: 'training-grounds',
+    name: 'Training Grounds',
+    description: 'Open field with no hazards — perfect for fundamentals.',
+    width: 960,
+    height: 540,
+    lakes: [],
+    walls: [],
+    playerSpawns: [
+      { x: 160, y: 140 },
+      { x: 160, y: 220 },
+      { x: 160, y: 300 },
+      { x: 240, y: 180 },
+      { x: 240, y: 360 },
+    ],
+    botSpawns: [
+      { x: 800, y: 140 },
+      { x: 800, y: 220 },
+      { x: 800, y: 300 },
+      { x: 720, y: 180 },
+      { x: 720, y: 360 },
+    ],
+  },
   {
     id: 'balanced-basin',
     name: 'Balanced Basin',

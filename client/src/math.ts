@@ -40,3 +40,9 @@ export function lerp(a: number, b: number, t: number): number {
 export function lerpVector(a: Vector, b: Vector, t: number): Vector {
   return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) };
 }
+
+export function rotate(v: Vector, radians: number): Vector {
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  return { x: v.x * cos - v.y * sin, y: v.x * sin + v.y * cos };
+}
