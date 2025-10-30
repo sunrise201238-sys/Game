@@ -152,12 +152,15 @@ export class MatchController {
     return PLAYER_ORDER.every((role) => Boolean(this.actions[role]));
   }
 
-  private broadcastAction(role: PlayerRole, action: UnitAction): void {
-    const message: ActionBroadcastMessage = {
-      type: 'ACTION_BROADCAST',
-      payload: { round: this.currentRound, actor: role, action },
-    };
-    this.broadcast(message);
+  private broadcastAction(actor: PlayerRole, action: UnitAction): void {
+    for (const recipient of PLAYER_ORDER) {
+      const perspectiveActor: PlayerRole = recipient === actor ? 'you' : 'opponent';
+      const message: ActionBroadcastMessage = {
+        type: 'ACTION_BROADCAST',
+        payload: { round: this.currentRound, actor: perspectiveActor, action },
+      };
+      this.send(recipient, message);
+    }
   }
 
   private handlePlanningTimeout(): void {

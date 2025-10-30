@@ -248,11 +248,14 @@ export class GameStateManager {
       return;
     }
     const role = message.payload.actor;
+    const alreadyHadAction = Boolean(this.actions[role]);
     this.actions[role] = message.payload.action;
     if (this.pendingOutcome) {
       return;
     }
-    this.previewAction(role, message.payload.action);
+    if (!alreadyHadAction) {
+      this.previewAction(role, message.payload.action);
+    }
     if (this.hasAllActions()) {
       this.prepareLocalOutcome();
     }
