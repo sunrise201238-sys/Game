@@ -61,6 +61,9 @@ export class GameStateManager {
   };
 
   private runtime: MatchRuntimeState | null = null;
+  private previewState: MatchRuntimeState | null = null;
+  private previewRound: number | null = null;
+  private previewMode: 'none' | 'partial' | 'full' = 'none';
   private firstMover: PlayerRole = 'you';
   private roundSeed = '';
   private actions: Partial<Record<PlayerRole, UnitAction>> = {};
@@ -137,17 +140,21 @@ export class GameStateManager {
     this.emit();
   }
 
-  registerPlayerAction(action: UnitAction) {
-    this.actions.you = action;
+  registerPlayerAction(action: UnitAction, role: PlayerRole = 'you') {
+    this.actions[role] = action;
+    this.previewAction(role, action);
   }
 
   getActiveUnitId(role: PlayerRole): string | null {
-    if (!this.runtime) return null;
-    const order = this.runtime.turnOrder[role];
-    const cursor = Math.min(this.runtime.cursors[role], order.length - 1);
-    for (let idx = cursor; idx < order.length; idx++) {
+    const source = this.previewState ?? this.runtime;
+    if (!source) return null;
+    const order = source.turnOrder[role];
+    if (order.length === 0) return null;
+    const cursor = Math.max(0, Math.min(order.length - 1, source.cursors[role]));
+    for (let offset = 0; offset < order.length; offset++) {
+      const idx = (cursor + offset) % order.length;
       const unitId = order[idx];
-      const unit = this.runtime.teams[role].units.find((candidate) => candidate.id === unitId && candidate.alive);
+      const unit = source.teams[role].units.find((candidate) => candidate.id === unitId && candidate.alive);
       if (unit) return unit.id;
     }
     return null;
@@ -172,6 +179,9 @@ export class GameStateManager {
       { you: message.payload.cursorYou, opponent: message.payload.cursorOpp },
       'seed-initial',
     );
+    this.previewState = null;
+    this.previewRound = null;
+    this.previewMode = 'none';
 
     this.state = {
       status: 'queueing',
@@ -196,6 +206,9 @@ export class GameStateManager {
     this.roundSeed = message.payload.randomSeed;
     this.runtime.randomSeed = message.payload.randomSeed;
     this.runtime.round = message.payload.round - 1;
+    this.previewState = null;
+    this.previewRound = null;
+    this.previewMode = 'none';
     this.state.status = 'ready';
     this.state.round = message.payload.round;
     this.state.countdownMs = Math.max(message.payload.deadlineTs - Date.now(), 0);
@@ -221,6 +234,7 @@ export class GameStateManager {
     if (!this.runtime) return;
     const pending = this.pendingOutcome;
     const hadLocalTimeline = Boolean(pending?.frames?.length);
+    const hadPreview = this.previewMode === 'full' && this.previewRound === message.payload.round;
     if (pending && pending.next.round === message.payload.round) {
       this.runtime = pending.next;
     } else {
@@ -230,6 +244,9 @@ export class GameStateManager {
       this.runtime.cursors.opponent = message.payload.nextCursorOpp;
       this.runtime.randomSeed = message.payload.randomSeed;
     }
+    this.previewState = null;
+    this.previewRound = null;
+    this.previewMode = 'none';
     this.state.status = 'waiting';
     this.state.round = message.payload.round;
     this.state.countdownMs = 0;
@@ -242,7 +259,7 @@ export class GameStateManager {
     this.state.activeOpponentId = this.getActiveUnitId('opponent');
     this.emit();
 
-    const fallbackTimeline = !hadLocalTimeline ? message.payload.timeline ?? [] : [];
+    const fallbackTimeline = !hadLocalTimeline && !hadPreview ? message.payload.timeline ?? [] : [];
     if (fallbackTimeline.length > 0) {
       for (const listener of this.timelineListeners) {
         listener(fallbackTimeline);
@@ -259,6 +276,9 @@ export class GameStateManager {
     this.state.summary = { winner: message.payload.winner };
     this.state.countdownMs = 0;
     this.runtime = null;
+    this.previewState = null;
+    this.previewRound = null;
+    this.previewMode = 'none';
     this.actions = {};
     this.pendingOutcome = null;
     this.state.activeYouId = null;
@@ -286,6 +306,9 @@ export class GameStateManager {
     } else {
       updateRuntimeFromSnapshot(this.runtime, snapshot);
     }
+    this.previewState = null;
+    this.previewRound = null;
+    this.previewMode = 'none';
     this.state.youUnits = snapshot.you.units.map(toClientUnit);
     this.state.opponentUnits = snapshot.opponent.units.map(toClientUnit);
     this.state.round = snapshot.round;
@@ -303,7 +326,6 @@ export class GameStateManager {
   private async computeLocalHash() {
     if (!this.runtime) return;
     this.state.status = 'resolving';
-    this.emit();
     const context = { map: this.runtime.map, unitsById: UNITS_BY_ID } as const;
     const outcome = simulateRound(context, {
       state: this.runtime,
@@ -315,11 +337,42 @@ export class GameStateManager {
       captureTimeline: true,
     });
     this.pendingOutcome = outcome;
+    this.previewState = outcome.next;
+    this.previewRound = outcome.next.round;
+    this.previewMode = 'full';
+    this.state.activeYouId = this.getActiveUnitId('you');
+    this.state.activeOpponentId = this.getActiveUnitId('opponent');
+    this.emit();
     const payload = encodeRoundHashPayload(outcome.diff, this.roundSeed);
     const hash = await sha256(payload);
     for (const listener of this.hashListeners) {
       listener({ round: outcome.next.round, hash });
     }
+    if (outcome.frames.length > 0) {
+      for (const listener of this.timelineListeners) {
+        listener(outcome.frames);
+      }
+    }
+  }
+
+  private previewAction(role: PlayerRole, action: UnitAction) {
+    if (!this.runtime) return;
+    const context = { map: this.runtime.map, unitsById: UNITS_BY_ID } as const;
+    const actions: Record<PlayerRole, UnitAction | null> = { you: null, opponent: null };
+    actions[role] = action;
+    const actingOrder = this.firstMover === 'you' ? (['you', 'opponent'] as PlayerRole[]) : (['opponent', 'you'] as PlayerRole[]);
+    const outcome = simulateRound(context, {
+      state: this.runtime,
+      actions,
+      actingOrder,
+      captureTimeline: true,
+    });
+    this.previewState = outcome.next;
+    this.previewRound = outcome.next.round;
+    this.previewMode = this.previewMode === 'full' ? 'full' : 'partial';
+    this.state.activeYouId = this.getActiveUnitId('you');
+    this.state.activeOpponentId = this.getActiveUnitId('opponent');
+    this.emit();
     if (outcome.frames.length > 0) {
       for (const listener of this.timelineListeners) {
         listener(outcome.frames);

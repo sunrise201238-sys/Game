@@ -303,6 +303,7 @@ canvas.addEventListener('pointercancel', () => {
 
 async function queueAction(unitId: string, vec: { x: number; y: number }, round: number) {
   const action = { unitId, dragVec: vec };
+  state.registerPlayerAction(action);
   const nonce = crypto.randomUUID();
   const commitHash = await sha256(serializeCommitPayload(action, nonce, COMMIT_SALT));
   const commitMessage: ClientMessage = {
