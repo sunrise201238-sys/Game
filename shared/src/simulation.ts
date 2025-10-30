@@ -71,6 +71,8 @@ export interface SimulationInput {
   captureTimeline?: boolean;
 }
 
+export type SimulationFramePhase = 'setup' | 'cleanup' | PlayerRole;
+
 export interface SimulationFrameUnit {
   id: string;
   type: string;
@@ -81,6 +83,7 @@ export interface SimulationFrameUnit {
 
 export interface SimulationFrame {
   time: number;
+  phase: SimulationFramePhase;
   you: SimulationFrameUnit[];
   opponent: SimulationFrameUnit[];
 }
@@ -228,12 +231,15 @@ export function simulateRound(
   const frames: SimulationFrame[] = [];
   let frameTime = 0;
   let frameAccumulator = 0;
+  let currentPhase: SimulationFramePhase = 'setup';
 
-  const recordFrame = () => {
+  const recordFrame = (phaseOverride?: SimulationFramePhase) => {
     if (!captureTimeline) return;
+    const phase = phaseOverride ?? currentPhase;
     const time = Number(frameTime.toFixed(4));
     const frame = {
       time,
+      phase,
       you: state.teams.you.units.map(toFrameUnit),
       opponent: state.teams.opponent.units.map(toFrameUnit),
     } satisfies SimulationFrame;
@@ -244,9 +250,10 @@ export function simulateRound(
     frames.push(frame);
   };
 
-  recordFrame();
+  recordFrame('setup');
 
   for (const role of input.actingOrder) {
+    currentPhase = role;
     const action = input.actions[role];
     const opponent: PlayerRole = role === 'you' ? 'opponent' : 'you';
     const { unit, nextCursor } = findNextActiveUnit(state, role);
@@ -326,6 +333,7 @@ export function simulateRound(
     }
   }
 
+  currentPhase = 'cleanup';
   applyAoeEffects(state, diff);
   applyDotDamage(state, diff, killedUnits);
 
