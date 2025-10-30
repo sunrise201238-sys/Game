@@ -251,8 +251,10 @@ export class Renderer {
 
     const { ctx } = this;
     ctx.save();
-    ctx.lineWidth = 2.5;
-    ctx.strokeStyle = state.activeTeam === 0 ? 'rgba(74,222,128,0.85)' : 'rgba(249,115,22,0.85)';
+    ctx.lineWidth = 3;
+    const baseStroke = state.activeTeam === 0 ? '#22c55e' : '#f97316';
+    const extensionStroke = state.activeTeam === 0 ? 'rgba(134,239,172,0.9)' : 'rgba(253,186,116,0.9)';
+    ctx.strokeStyle = baseStroke;
     ctx.setLineDash([12, 8]);
     ctx.beginPath();
     ctx.moveTo(dragOrigin.x, dragOrigin.y);
@@ -261,20 +263,21 @@ export class Renderer {
     ctx.setLineDash([]);
 
     if (extensionEnd) {
-      ctx.globalAlpha = 0.75;
+      ctx.save();
+      ctx.strokeStyle = extensionStroke;
+      ctx.globalAlpha = 0.9;
       ctx.setLineDash([6, 6]);
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.moveTo(previewEnd.x, previewEnd.y);
       ctx.lineTo(extensionEnd.x, extensionEnd.y);
       ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.globalAlpha = 1;
+      ctx.restore();
     }
 
     const arrowTarget = extensionEnd ?? previewEnd;
     const arrowHead = addVectors(arrowTarget, scale(launchDir, 20));
-    ctx.fillStyle = ctx.strokeStyle;
+    ctx.fillStyle = baseStroke;
     ctx.beginPath();
     ctx.moveTo(arrowHead.x, arrowHead.y);
     ctx.lineTo(arrowHead.x + launchDir.y * 8, arrowHead.y - launchDir.x * 8);
