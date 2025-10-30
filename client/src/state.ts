@@ -367,8 +367,15 @@ export class GameStateManager {
       actingOrder,
       captureTimeline: true,
     });
-    this.previewState = outcome.next;
-    this.previewRound = outcome.next.round;
+    const preview = outcome.next;
+    const otherRole: PlayerRole = role === 'you' ? 'opponent' : 'you';
+    if (!this.actions[otherRole]) {
+      preview.cursors[otherRole] = this.runtime.cursors[otherRole];
+      preview.round = this.runtime.round + 1;
+      preview.randomSeed = this.runtime.randomSeed;
+    }
+    this.previewState = preview;
+    this.previewRound = preview.round;
     this.previewMode = this.previewMode === 'full' ? 'full' : 'partial';
     this.state.activeYouId = this.getActiveUnitId('you');
     this.state.activeOpponentId = this.getActiveUnitId('opponent');
