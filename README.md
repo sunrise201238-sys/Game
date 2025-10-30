@@ -123,16 +123,18 @@ With the server running, open two browser tabs pointed at the client build (or d
 
 ### Server (Web Service)
 
-1. Create a **Web Service** on Render.
-2. Set the build command:
+1. Create a **Web Service** on Render using the **Node** environment (set `NODE_VERSION=20` or `NIXPACKS_NODE_VERSION=20` in the Render dashboard if prompted).
+2. Set the build command to run the hardened script in this repo:
 
    ```bash
-   node -v && npm -v && \
-   npm ci --registry=https://registry.npmjs.org/ --no-audit --no-fund || \
-   npm install --registry=https://registry.npmjs.org/ --no-audit --no-fund && \
-   npm run build
+   ./scripts/render-build.sh
    ```
-3. Set the start command: `npm run start:server`.
+3. Set the start command so Render boots the compiled server with the same Node toolchain:
+
+   ```bash
+   ./scripts/render-start.sh
+   ```
+   > The helper scripts install Node into `.render-node/` within the repo so the build and start phases share the same runtime.
 4. Required environment variables:
    - `SECRET_SALT=<secure-random-string>`.
    - `PLANNING_MS=10000`.
@@ -143,15 +145,13 @@ With the server running, open two browser tabs pointed at the client build (or d
 
 ### Client (Static Site)
 
-1. Create a new **Static Site** on Render.
-2. Set the build command:
+1. Create a new **Static Site** on Render (Render Static automatically provisions Node, but setting `NODE_VERSION=20` ensures parity).
+2. Set the build command (reuses the Node bootstrapper if Render does not provision npm automatically):
 
-   ```bash
-   npm ci --registry=https://registry.npmjs.org/ --no-audit --no-fund || \
-   npm install --registry=https://registry.npmjs.org/ --no-audit --no-fund && \
-   npm run build --workspace client
-   ```
-3. Set the publish directory: `client/dist`.
+    ```bash
+    ./scripts/render-build.sh
+    ```
+ 3. Set the publish directory: `client/dist`.
 4. Environment variables:
    - `WS_URL=wss://<your-server>.onrender.com`.
    - `VITE_LANGUAGE_DEFAULT=zh-TW` (switch to `en-US` if you prefer English by default).

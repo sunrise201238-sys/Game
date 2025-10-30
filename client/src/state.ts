@@ -282,11 +282,12 @@ export class GameStateManager {
     let fallbackTimeline = message.payload.timeline ?? [];
     if (hadLocalTimeline || hadFullPreview) {
       fallbackTimeline = [];
-    } else if (hadPartialPreview && fallbackTimeline.length > 0) {
+    } else if (hadPartialPreview && fallbackTimeline.length > 0 && this.runtime) {
       fallbackTimeline = filterTimelineAfterPreview(
         fallbackTimeline,
         previousPreviewActor,
         previousPreviewCutoff,
+        this.runtime,
       );
     }
     if (fallbackTimeline.length > 0) {
@@ -488,23 +489,56 @@ function filterTimelineAfterPreview(
   frames: SimulationFrame[],
   actor: PlayerRole | 'both' | null,
   cutoffTime: number,
+  runtime: MatchRuntimeState,
 ): SimulationFrame[] {
-  if (!actor || actor === 'both') {
+  if (!frames.length) {
     return frames;
   }
+  const normalizedCutoff = Number.isFinite(cutoffTime) ? cutoffTime : 0;
+  if (!actor || actor === 'both') {
+    return normalizeTimeline(frames, frames[0]?.time ?? 0);
+  }
   const epsilon = 1 / 240;
-  let skipped = false;
   const filtered = frames.filter((frame) => {
-    if ((frame.phase === actor || frame.phase === 'setup') && frame.time <= cutoffTime + epsilon) {
-      skipped = true;
+    if (frame.time <= normalizedCutoff + epsilon && (frame.phase === actor || frame.phase === 'setup')) {
       return false;
     }
-    return true;
+    return frame.time >= normalizedCutoff - epsilon;
   });
-  if (filtered.length === 0 && skipped) {
+  if (filtered.length === 0) {
     return [];
   }
-  return filtered;
+  const rebased = filtered.map((frame) => ({
+    ...frame,
+    time: Number(Math.max(0, frame.time - normalizedCutoff).toFixed(4)),
+  }));
+  rebased[0] = {
+    ...rebased[0],
+    time: 0,
+    you: runtimeUnitsToFrameUnits(runtime.teams.you.units),
+    opponent: runtimeUnitsToFrameUnits(runtime.teams.opponent.units),
+  };
+  return rebased;
+}
+
+function normalizeTimeline(frames: SimulationFrame[], offset: number): SimulationFrame[] {
+  if (!frames.length) return frames;
+  const base = Number.isFinite(offset) ? offset : frames[0].time;
+  if (!base) return frames;
+  return frames.map((frame) => ({
+    ...frame,
+    time: Number(Math.max(0, frame.time - base).toFixed(4)),
+  }));
+}
+
+function runtimeUnitsToFrameUnits(units: RuntimeUnit[]): SimulationFrame['you'] {
+  return units.map((unit) => ({
+    id: unit.id,
+    type: unit.type,
+    hp: unit.hp,
+    alive: unit.alive,
+    position: { ...unit.position },
+  }));
 }
 
 function applyDiffToRuntime(runtime: MatchRuntimeState, diff: RoundDiff) {
