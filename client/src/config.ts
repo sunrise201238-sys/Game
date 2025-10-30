@@ -31,6 +31,7 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
       damage: 32,
       knockback: 140,
       color: '#7ec8e3',
+      previewScale: 2.8,
     },
   },
   {

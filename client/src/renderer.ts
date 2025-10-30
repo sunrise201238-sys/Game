@@ -232,7 +232,9 @@ export class Renderer {
     const launchDir = normalize(dragVector);
     let previewDistance = clampedPower * 1.2;
     if (activeUnit.def.projectile) {
-      previewDistance = activeUnit.def.projectile.maxDistance;
+      const { maxDistance, previewScale } = activeUnit.def.projectile;
+      const scale = previewScale ?? 1.2;
+      previewDistance = Math.min(maxDistance, clampedPower * scale);
     }
     const previewEnd = addVectors(dragOrigin, scale(launchDir, previewDistance));
 

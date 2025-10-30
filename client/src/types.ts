@@ -13,6 +13,7 @@ export interface ProjectileSpec {
   damage: number;
   knockback: number;
   color: string;
+  previewScale?: number;
 }
 
 export interface AoeSpec {
