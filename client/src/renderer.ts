@@ -251,28 +251,36 @@ export class Renderer {
 
     const { ctx } = this;
     ctx.save();
-    ctx.lineWidth = 3.5;
-    const baseStroke = '#f8fafc';
+
+    const baseStroke = state.activeTeam === 0 ? '#bfdbfe' : '#fcd34d';
     const extensionStroke = state.activeTeam === 0 ? '#38bdf8' : '#fb923c';
+
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineWidth = 4;
     ctx.strokeStyle = baseStroke;
     ctx.setLineDash([]);
+    ctx.shadowColor = baseStroke;
+    ctx.shadowBlur = 8;
     ctx.beginPath();
     ctx.moveTo(dragOrigin.x, dragOrigin.y);
     ctx.lineTo(previewEnd.x, previewEnd.y);
     ctx.stroke();
 
     if (extensionEnd) {
-      ctx.save();
       ctx.strokeStyle = extensionStroke;
-      ctx.globalAlpha = 0.85;
+      ctx.lineWidth = 3;
       ctx.setLineDash([6, 6]);
-      ctx.lineWidth = 2.5;
+      ctx.shadowColor = extensionStroke;
+      ctx.shadowBlur = 6;
       ctx.beginPath();
       ctx.moveTo(previewEnd.x, previewEnd.y);
       ctx.lineTo(extensionEnd.x, extensionEnd.y);
       ctx.stroke();
-      ctx.restore();
     }
+
+    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+    ctx.globalCompositeOperation = 'source-over';
 
     const arrowTarget = extensionEnd ?? previewEnd;
     const arrowHead = addVectors(arrowTarget, scale(launchDir, 20));
@@ -297,6 +305,8 @@ export class Renderer {
         x: Math.min(this.map.width - spec.radius, Math.max(spec.radius, desired.x)),
         y: Math.min(this.map.height - spec.radius, Math.max(spec.radius, desired.y)),
       };
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.6;
       const zoneColor = spec.teamColors?.[state.activeTeam] ?? spec.color;
       ctx.fillStyle = this.replaceAlpha(zoneColor, 0.35);
@@ -309,6 +319,7 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(center.x, center.y, spec.radius, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.restore();
     }
     ctx.restore();
   }
