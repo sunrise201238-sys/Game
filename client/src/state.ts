@@ -15,6 +15,7 @@ import {
   type MatchRuntimeState,
   type RuntimeUnit,
   type SimulationFrame,
+  type SimulationFrameUnit,
 } from '@slingshot/shared';
 
 import { MAPS, UNITS_BY_ID } from './resources';
@@ -68,6 +69,7 @@ export class GameStateManager {
   private roundSeed = '';
   private actions: Partial<Record<PlayerRole, UnitAction>> = {};
   private pendingOutcome: ReturnType<typeof simulateRound> | null = null;
+  private previewTimeline: SimulationFrame[] | null = null;
   private hashListeners: HashListener[] = [];
   private timelineListeners: TimelineListener[] = [];
   private diffListeners: DiffListener[] = [];
@@ -150,7 +152,8 @@ export class GameStateManager {
   }
 
   getActiveUnitId(role: PlayerRole): string | null {
-    const source = this.previewState ?? this.runtime;
+    const usePreview = this.previewMode === 'full' ? this.previewState : this.previewMode === 'partial' ? null : this.previewState;
+    const source = usePreview ?? this.runtime;
     if (!source) return null;
     const order = source.turnOrder[role];
     if (order.length === 0) return null;
@@ -186,6 +189,7 @@ export class GameStateManager {
     this.previewState = null;
     this.previewRound = null;
     this.previewMode = 'none';
+    this.previewTimeline = null;
 
     this.state = {
       status: 'queueing',
@@ -213,6 +217,7 @@ export class GameStateManager {
     this.previewState = null;
     this.previewRound = null;
     this.previewMode = 'none';
+    this.previewTimeline = null;
     this.state.status = 'ready';
     this.state.round = message.payload.round;
     this.state.countdownMs = Math.max(message.payload.deadlineTs - Date.now(), 0);
@@ -239,6 +244,8 @@ export class GameStateManager {
     const pending = this.pendingOutcome;
     const hadLocalTimeline = Boolean(pending?.frames?.length);
     const hadPreview = this.previewMode === 'full' && this.previewRound === message.payload.round;
+    const hadPartialPreview = this.previewMode === 'partial' && this.previewRound === message.payload.round;
+    const lastPreviewFrame = hadPartialPreview && this.previewTimeline?.length ? this.previewTimeline[this.previewTimeline.length - 1] : null;
     if (pending && pending.next.round === message.payload.round) {
       this.runtime = pending.next;
     } else {
@@ -251,6 +258,7 @@ export class GameStateManager {
     this.previewState = null;
     this.previewRound = null;
     this.previewMode = 'none';
+    this.previewTimeline = null;
     this.state.status = 'waiting';
     this.state.round = message.payload.round;
     this.state.countdownMs = 0;
@@ -263,7 +271,10 @@ export class GameStateManager {
     this.state.activeOpponentId = this.getActiveUnitId('opponent');
     this.emit();
 
-    const fallbackTimeline = !hadLocalTimeline && !hadPreview ? message.payload.timeline ?? [] : [];
+    let fallbackTimeline = !hadLocalTimeline && !hadPreview ? message.payload.timeline ?? [] : [];
+    if (fallbackTimeline.length > 0 && lastPreviewFrame) {
+      fallbackTimeline = trimTimelineAfterFrame(fallbackTimeline, lastPreviewFrame);
+    }
     if (fallbackTimeline.length > 0) {
       for (const listener of this.timelineListeners) {
         listener(fallbackTimeline);
@@ -283,6 +294,7 @@ export class GameStateManager {
     this.previewState = null;
     this.previewRound = null;
     this.previewMode = 'none';
+    this.previewTimeline = null;
     this.actions = {};
     this.pendingOutcome = null;
     this.state.activeYouId = null;
@@ -313,6 +325,7 @@ export class GameStateManager {
     this.previewState = null;
     this.previewRound = null;
     this.previewMode = 'none';
+    this.previewTimeline = null;
     this.state.youUnits = snapshot.you.units.map(toClientUnit);
     this.state.opponentUnits = snapshot.opponent.units.map(toClientUnit);
     this.state.round = snapshot.round;
@@ -344,6 +357,7 @@ export class GameStateManager {
     this.previewState = outcome.next;
     this.previewRound = outcome.next.round;
     this.previewMode = 'full';
+    this.previewTimeline = outcome.frames;
     this.state.activeYouId = this.getActiveUnitId('you');
     this.state.activeOpponentId = this.getActiveUnitId('opponent');
     this.emit();
@@ -384,10 +398,13 @@ export class GameStateManager {
     }
     this.previewState = preview;
     this.previewRound = preview.round;
-    this.previewMode = this.actions.you && this.actions.opponent ? 'full' : 'partial';
-    this.state.youUnits = preview.teams.you.units.map(toClientRuntimeUnit);
-    this.state.opponentUnits = preview.teams.opponent.units.map(toClientRuntimeUnit);
-    this.state.graves = extractGraves(outcome.diff);
+    const bothActionsKnown = Boolean(this.actions.you && this.actions.opponent);
+    this.previewMode = bothActionsKnown ? 'full' : 'partial';
+    if (bothActionsKnown) {
+      this.state.youUnits = preview.teams.you.units.map(toClientRuntimeUnit);
+      this.state.opponentUnits = preview.teams.opponent.units.map(toClientRuntimeUnit);
+      this.state.graves = extractGraves(outcome.diff);
+    }
     this.state.activeYouId = this.getActiveUnitId('you');
     this.state.activeOpponentId = this.getActiveUnitId('opponent');
     this.emit();
@@ -396,6 +413,7 @@ export class GameStateManager {
         listener(outcome.frames);
       }
     }
+    this.previewTimeline = outcome.frames;
   }
 
   private emit() {
@@ -437,6 +455,45 @@ async function sha256(value: string) {
   return Array.from(new Uint8Array(hash))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
+}
+
+function trimTimelineAfterFrame(frames: SimulationFrame[], baseline: SimulationFrame): SimulationFrame[] {
+  const startIndex = findContinuationIndex(frames, baseline);
+  return frames.slice(startIndex);
+}
+
+function findContinuationIndex(frames: SimulationFrame[], baseline: SimulationFrame): number {
+  for (let idx = 0; idx < frames.length; idx++) {
+    if (framesEqual(frames[idx], baseline)) {
+      return Math.min(frames.length, idx + 1);
+    }
+  }
+  return 0;
+}
+
+function framesEqual(a: SimulationFrame, b: SimulationFrame): boolean {
+  if (!unitsMatch(a.you, b.you)) return false;
+  if (!unitsMatch(a.opponent, b.opponent)) return false;
+  return true;
+}
+
+function unitsMatch(a: SimulationFrameUnit[], b: SimulationFrameUnit[]): boolean {
+  if (a.length !== b.length) return false;
+  const tolerance = 0.05;
+  for (let i = 0; i < a.length; i++) {
+    const unitA = a[i];
+    const unitB = b[i];
+    if (unitA.id !== unitB.id || unitA.alive !== unitB.alive) {
+      return false;
+    }
+    if (Math.abs(unitA.hp - unitB.hp) > 0.5) {
+      return false;
+    }
+    if (Math.abs(unitA.position.x - unitB.position.x) > tolerance || Math.abs(unitA.position.y - unitB.position.y) > tolerance) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function applyDiffToRuntime(runtime: MatchRuntimeState, diff: RoundDiff) {
