@@ -255,12 +255,11 @@ export class Renderer {
     const baseStroke = state.activeTeam === 0 ? '#bfdbfe' : '#fcd34d';
     const extensionStroke = state.activeTeam === 0 ? '#38bdf8' : '#fb923c';
 
-    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalCompositeOperation = 'source-over';
     ctx.lineWidth = 4;
     ctx.strokeStyle = baseStroke;
     ctx.setLineDash([]);
-    ctx.shadowColor = baseStroke;
-    ctx.shadowBlur = 8;
+    ctx.shadowBlur = 0;
     ctx.beginPath();
     ctx.moveTo(dragOrigin.x, dragOrigin.y);
     ctx.lineTo(previewEnd.x, previewEnd.y);
@@ -270,8 +269,6 @@ export class Renderer {
       ctx.strokeStyle = extensionStroke;
       ctx.lineWidth = 3;
       ctx.setLineDash([6, 6]);
-      ctx.shadowColor = extensionStroke;
-      ctx.shadowBlur = 6;
       ctx.beginPath();
       ctx.moveTo(previewEnd.x, previewEnd.y);
       ctx.lineTo(extensionEnd.x, extensionEnd.y);
@@ -279,9 +276,6 @@ export class Renderer {
     }
 
     ctx.setLineDash([]);
-    ctx.shadowBlur = 0;
-    ctx.globalCompositeOperation = 'source-over';
-
     const arrowTarget = extensionEnd ?? previewEnd;
     const arrowHead = addVectors(arrowTarget, scale(launchDir, 20));
     ctx.fillStyle = baseStroke;
