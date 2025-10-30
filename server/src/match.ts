@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 import { WebSocket } from 'ws';
 
@@ -8,17 +8,13 @@ import {
   type ServerMessage,
   type MatchFoundMessage,
   type RoundStartMessage,
-  type RevealOpenMessage,
-  type ActionRevealMessage,
+  type ActionBroadcastMessage,
   type RoundResultMessage,
   type MatchEndMessage,
   type UnitAction,
   runtimeToSnapshot,
   simulateRound,
   createInitialRuntime,
-  encodeRoundHashPayload,
-  serializeCommitPayload,
-  compareHashes,
   type RoundDiff,
   type MapSchema,
   type UnitSchema,
@@ -40,7 +36,6 @@ interface PlayerInit {
 interface MatchDependencies {
   config: ServerConfig;
   analytics: AnalyticsStore;
-  secretSalt: string;
   units: UnitSchema[];
   unitsById: Record<string, UnitSchema>;
   onComplete: (match: MatchContext) => void;
@@ -52,19 +47,13 @@ export class MatchController {
   readonly match: MatchContext;
   private readonly config: ServerConfig;
   private readonly analytics: AnalyticsStore;
-  private readonly secretSalt: string;
   private readonly unitsById: Record<string, UnitSchema>;
   private readonly onComplete: (match: MatchContext) => void;
 
   private currentRound: number;
-  private stage: 'idle' | 'planning' | 'reveal' | 'resolving' | 'ended' = 'idle';
+  private stage: 'idle' | 'waiting' | 'resolving' | 'ended' = 'idle';
   private planningTimer?: NodeJS.Timeout;
-  private revealTimer?: NodeJS.Timeout;
-  private botPlans = new Map<PlayerRole, { action: UnitAction; nonce: string }>();
-  private commits: Partial<Record<PlayerRole, string>> = {};
-  private reveals: Partial<Record<PlayerRole, { action: UnitAction; nonce: string }>> = {};
-  private resultHashes: Partial<Record<PlayerRole, string>> = {};
-  private needsAuthoritative = false;
+  private actions: Partial<Record<PlayerRole, UnitAction>> = {};
 
   constructor(
     map: MapSchema,
@@ -73,7 +62,6 @@ export class MatchController {
   ) {
     this.config = dependencies.config;
     this.analytics = dependencies.analytics;
-    this.secretSalt = dependencies.secretSalt;
     this.unitsById = dependencies.unitsById;
     this.onComplete = dependencies.onComplete;
 
@@ -95,18 +83,8 @@ export class MatchController {
 
   handleMessage(role: PlayerRole, message: ClientMessage): void {
     switch (message.type) {
-      case 'ACTION_COMMIT':
-        if (message.payload.round === this.currentRound) {
-          this.commits[role] = message.payload.hash;
-        }
-        break;
-      case 'ACTION_REVEAL':
-        this.handleReveal(role, message.payload.round, message.payload.action, message.payload.nonce);
-        break;
-      case 'CLIENT_RESULT_HASH':
-        if (message.payload.round === this.currentRound) {
-          this.resultHashes[role] = message.payload.hash;
-        }
+      case 'ACTION_SUBMIT':
+        this.handleAction(role, message.payload.round, message.payload.action);
         break;
       default:
         break;
@@ -131,15 +109,11 @@ export class MatchController {
 
   private beginPlanningPhase(): void {
     if (this.stage === 'ended') return;
-    this.stage = 'planning';
+    this.stage = 'waiting';
     this.currentRound = this.match.runtime.round + 1;
-    this.commits = {};
-    this.reveals = {};
-    this.resultHashes = {};
-    this.needsAuthoritative = false;
-    this.botPlans.clear();
-
-    const planningDeadline = Date.now() + this.config.planningMs;
+    this.actions = {};
+    const isPvP = !this.match.players.you.isBot && !this.match.players.opponent.isBot;
+    const planningDeadline = isPvP && this.config.planningMs > 0 ? Date.now() + this.config.planningMs : 0;
     const roundSeed = this.match.runtime.randomSeed;
 
     for (const role of PLAYER_ORDER) {
@@ -155,46 +129,63 @@ export class MatchController {
       this.send(role, roundStart);
     }
 
-    this.prepareBotPlans();
-
     this.clearTimer(this.planningTimer);
-    this.planningTimer = setTimeout(() => {
-      this.openRevealPhase();
-    }, this.config.planningMs);
+    if (isPvP && this.config.planningMs > 0) {
+      this.planningTimer = setTimeout(() => this.handlePlanningTimeout(), this.config.planningMs);
+    }
+
+    this.queueBotActions();
   }
 
-  private openRevealPhase(): void {
-    if (this.stage !== 'planning') return;
-    this.stage = 'reveal';
-    const reveal: RevealOpenMessage = {
-      type: 'REVEAL_OPEN',
-      payload: { round: this.currentRound },
-    };
-    this.broadcast(reveal);
-    this.flushBotReveals();
-    this.clearTimer(this.revealTimer);
-    this.revealTimer = setTimeout(() => this.finalizeRound(), this.config.revealMs);
-  }
-
-  private handleReveal(role: PlayerRole, round: number, action: UnitAction, nonce: string): void {
-    if (round !== this.currentRound || this.stage === 'ended') {
+  private handleAction(role: PlayerRole, round: number, action: UnitAction): void {
+    if (this.stage !== 'waiting' || round !== this.currentRound || this.actions[role]) {
       return;
     }
-    const commit = this.commits[role];
-    const payloadHash = createHash('sha256')
-      .update(serializeCommitPayload(action, nonce, this.secretSalt))
-      .digest('hex');
-    if (!commit || !compareHashes(commit, payloadHash)) {
-      this.needsAuthoritative = true;
-    }
-    this.reveals[role] = { action, nonce };
-    const echo: ActionRevealMessage = {
-      type: 'ACTION_REVEAL',
-      payload: { round, action, nonce },
-    };
-    this.broadcast(echo);
-    if (this.stage === 'reveal' && PLAYER_ORDER.every((r) => this.reveals[r])) {
+    this.actions[role] = action;
+    this.broadcastAction(role, action);
+    if (this.hasAllActions()) {
       this.finalizeRound();
+    }
+  }
+
+  private hasAllActions(): boolean {
+    return PLAYER_ORDER.every((role) => Boolean(this.actions[role]));
+  }
+
+  private broadcastAction(role: PlayerRole, action: UnitAction): void {
+    const message: ActionBroadcastMessage = {
+      type: 'ACTION_BROADCAST',
+      payload: { round: this.currentRound, actor: role, action },
+    };
+    this.broadcast(message);
+  }
+
+  private handlePlanningTimeout(): void {
+    if (this.stage !== 'waiting') {
+      return;
+    }
+    let changed = false;
+    for (const role of PLAYER_ORDER) {
+      if (!this.actions[role]) {
+        const fallback = this.generateFallbackAction(role);
+        if (fallback) {
+          this.actions[role] = fallback;
+          this.broadcastAction(role, fallback);
+          changed = true;
+        }
+      }
+    }
+    if (changed || this.hasAllActions()) {
+      this.finalizeRound();
+    }
+  }
+
+  private queueBotActions(): void {
+    for (const role of PLAYER_ORDER) {
+      const player = this.match.players[role];
+      if (!player.isBot) continue;
+      const action = this.generateBotAction(role);
+      setTimeout(() => this.handleAction(role, this.currentRound, action), 150);
     }
   }
 
@@ -202,15 +193,21 @@ export class MatchController {
     if (this.stage === 'ended' || this.stage === 'resolving') return;
     this.stage = 'resolving';
     this.clearTimer(this.planningTimer);
-    this.clearTimer(this.revealTimer);
 
     const actions: Record<PlayerRole, UnitAction | null> = {
-      you: this.reveals.you?.action ?? this.generateFallbackAction('you'),
-      opponent: this.reveals.opponent?.action ?? this.generateFallbackAction('opponent'),
+      you: this.actions.you ?? this.generateFallbackAction('you'),
+      opponent: this.actions.opponent ?? this.generateFallbackAction('opponent'),
     };
 
+    for (const role of PLAYER_ORDER) {
+      const action = actions[role];
+      if (action && !this.actions[role]) {
+        this.actions[role] = action;
+        this.broadcastAction(role, action);
+      }
+    }
+
     const actingOrder = this.match.turnSequence;
-    const roundSeed = this.match.runtime.randomSeed;
     const outcome = simulateRound(
       { map: this.match.map, unitsById: this.unitsById },
       {
@@ -223,16 +220,6 @@ export class MatchController {
 
     this.analytics.recordRound();
     this.analytics.recordOutOfBounds(countOutOfBounds(outcome.diff, this.match.map));
-
-    const authoritativePayload = encodeRoundHashPayload(outcome.diff, roundSeed);
-    const serverHash = createHash('sha256').update(authoritativePayload).digest('hex');
-
-    for (const role of PLAYER_ORDER) {
-      const clientHash = this.resultHashes[role];
-      if (!clientHash || clientHash !== serverHash) {
-        this.needsAuthoritative = true;
-      }
-    }
 
     this.match.runtime = outcome.next;
     this.match.latestSummary = outcome.summary;
@@ -256,10 +243,6 @@ export class MatchController {
     if (outcome.summary) {
       this.finishMatch(outcome.summary);
       return;
-    }
-
-    if (this.needsAuthoritative) {
-      console.warn(`Determinism mismatch detected for match ${this.match.id} round ${this.currentRound}`);
     }
 
     this.stage = 'idle';
@@ -286,26 +269,6 @@ export class MatchController {
       opponent: this.match.runtime.teams.opponent.units,
     });
     this.onComplete(this.match);
-  }
-
-  private prepareBotPlans(): void {
-    for (const role of PLAYER_ORDER) {
-      const player = this.match.players[role];
-      if (!player.isBot) continue;
-      const action = this.generateBotAction(role);
-      const nonce = randomUUID();
-      this.commits[role] = createHash('sha256')
-        .update(serializeCommitPayload(action, nonce, this.secretSalt))
-        .digest('hex');
-      this.botPlans.set(role, { action, nonce });
-    }
-  }
-
-  private flushBotReveals(): void {
-    for (const [role, plan] of this.botPlans.entries()) {
-      this.handleReveal(role, this.currentRound, plan.action, plan.nonce);
-    }
-    this.botPlans.clear();
   }
 
   private generateFallbackAction(role: PlayerRole): UnitAction | null {

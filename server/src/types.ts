@@ -17,7 +17,6 @@ export interface PlayerContext {
   socket: WebSocket | null;
   units: RuntimeUnit[];
   isBot: boolean;
-  pendingAction?: { action: UnitAction; nonce: string };
   lastSeenAt: number;
 }
 

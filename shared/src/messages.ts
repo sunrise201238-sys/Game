@@ -35,35 +35,20 @@ export interface RoundStartMessage {
   };
 }
 
-export interface ActionCommitMessage {
-  type: "ACTION_COMMIT";
-  payload: {
-    round: number;
-    hash: string;
-  };
-}
-
-export interface RevealOpenMessage {
-  type: "REVEAL_OPEN";
-  payload: {
-    round: number;
-  };
-}
-
-export interface ActionRevealMessage {
-  type: "ACTION_REVEAL";
+export interface ActionSubmitMessage {
+  type: "ACTION_SUBMIT";
   payload: {
     round: number;
     action: UnitAction;
-    nonce: string;
   };
 }
 
-export interface ClientResultHashMessage {
-  type: "CLIENT_RESULT_HASH";
+export interface ActionBroadcastMessage {
+  type: "ACTION_BROADCAST";
   payload: {
     round: number;
-    hash: string;
+    actor: PlayerRole;
+    action: UnitAction;
   };
 }
 
@@ -110,8 +95,7 @@ export interface ErrorMessage {
 export type ServerMessage =
   | MatchFoundMessage
   | RoundStartMessage
-  | RevealOpenMessage
-  | ActionRevealMessage
+  | ActionBroadcastMessage
   | RoundResultMessage
   | ResyncSnapshotMessage
   | MatchEndMessage
@@ -119,9 +103,7 @@ export type ServerMessage =
 
 export type ClientMessage =
   | JoinQueueMessage
-  | ActionCommitMessage
-  | ActionRevealMessage
-  | ClientResultHashMessage
+  | ActionSubmitMessage
   | HeartbeatMessage;
 
 export interface PlayerSnapshot {

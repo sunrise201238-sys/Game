@@ -791,14 +791,6 @@ function computeMatchSummary(state: MatchRuntimeState): MatchSummary | undefined
   return undefined;
 }
 
-export function encodeRoundHashPayload(diff: RoundDiff, randomSeed: string): string {
-  const payload = {
-    randomSeed,
-    diff,
-  };
-  return JSON.stringify(payload, (_, value) => (typeof value === 'number' ? Number(value.toFixed(5)) : value));
-}
-
 function deriveNextSeed(previous: string, round: number): string {
   let hash = 0;
   for (let i = 0; i < previous.length; i++) {

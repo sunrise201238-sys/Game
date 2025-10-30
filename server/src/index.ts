@@ -237,7 +237,6 @@ function createMatch(
   const controller = new MatchController(map, players, {
     config,
     analytics,
-    secretSalt: config.secretSalt,
     units: resources.units,
     unitsById: resources.unitsById,
     onComplete: (match) => cleanupMatch(match, [ticketA, ticketB]),
@@ -262,7 +261,6 @@ function createBotMatch(resources: Awaited<ReturnType<typeof loadResources>>, ti
   const controller = new MatchController(map, players, {
     config,
     analytics,
-    secretSalt: config.secretSalt,
     units: resources.units,
     unitsById: resources.unitsById,
     onComplete: (match) => cleanupMatch(match, [ticket]),

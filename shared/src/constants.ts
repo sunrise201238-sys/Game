@@ -8,14 +8,11 @@ export const PHYSICS_CONSTANTS = {
   enemyKnockbackScale: 1.8,
   impulseVelocityScale: 1.8,
   outOfBoundsZ: -10,
-  hashTolerance: 0.0001,
   hazardGraceFrames: 3
 } as const;
 
 export const ROUND_CONFIG = {
-  maxRoundsDefault: 30,
-  actionCommitMs: 7000,
-  actionRevealMs: 4000
+  maxRoundsDefault: 30
 } as const;
 
 export const ANALYTICS_KEYS = [

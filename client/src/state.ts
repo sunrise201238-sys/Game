@@ -3,7 +3,7 @@ import {
   type MatchFoundMessage,
   type RoundStartMessage,
   type RoundResultMessage,
-  type ActionRevealMessage,
+  type ActionBroadcastMessage,
   type MatchEndMessage,
   type MinimalSnapshot,
   type PlayerRole,
@@ -11,7 +11,6 @@ import {
   type RoundDiff,
   createInitialRuntime,
   simulateRound,
-  encodeRoundHashPayload,
   type MatchRuntimeState,
   type RuntimeUnit,
   type SimulationFrame,
@@ -43,7 +42,6 @@ export interface ClientState {
   activeOpponentId: string | null;
 }
 
-export type HashListener = (payload: { round: number; hash: string }) => void;
 export type TimelineListener = (frames: SimulationFrame[]) => void;
 export type DiffListener = (diff: RoundDiff) => void;
 
@@ -72,7 +70,6 @@ export class GameStateManager {
   private previewTimeline: SimulationFrame[] | null = null;
   private previewActor: PlayerRole | 'both' | null = null;
   private previewLastTime = 0;
-  private hashListeners: HashListener[] = [];
   private timelineListeners: TimelineListener[] = [];
   private diffListeners: DiffListener[] = [];
   private listeners: Array<(state: ClientState) => void> = [];
@@ -91,10 +88,6 @@ export class GameStateManager {
     snapshot.activeYouId = this.getActiveUnitId('you');
     snapshot.activeOpponentId = this.getActiveUnitId('opponent');
     return snapshot;
-  }
-
-  onHash(listener: HashListener) {
-    this.hashListeners.push(listener);
   }
 
   onTimeline(listener: TimelineListener) {
@@ -117,8 +110,8 @@ export class GameStateManager {
       case 'ROUND_START':
         this.handleRoundStart(message);
         break;
-      case 'ACTION_REVEAL':
-        this.handleActionReveal(message);
+      case 'ACTION_BROADCAST':
+        this.handleActionBroadcast(message);
         break;
       case 'ROUND_RESULT':
         this.handleRoundResult(message);
@@ -147,6 +140,9 @@ export class GameStateManager {
   registerPlayerAction(action: UnitAction, role: PlayerRole = 'you') {
     this.actions[role] = action;
     this.previewAction(role, action);
+    if (this.hasAllActions() && !this.pendingOutcome) {
+      this.prepareLocalOutcome();
+    }
   }
 
   private getRoundOrder(): PlayerRole[] {
@@ -234,14 +230,19 @@ export class GameStateManager {
     this.emit();
   }
 
-  private handleActionReveal(message: ActionRevealMessage) {
+  private handleActionBroadcast(message: ActionBroadcastMessage) {
     if (!this.runtime) return;
-    const role = this.runtime.teams.you.units.some((unit) => unit.id === message.payload.action.unitId)
-      ? 'you'
-      : 'opponent';
+    if (message.payload.round !== this.runtime.round + 1 && message.payload.round !== this.previewRound) {
+      return;
+    }
+    const role = message.payload.actor;
     this.actions[role] = message.payload.action;
-    if (this.hasAllActions() && !this.pendingOutcome) {
-      this.computeLocalHash();
+    if (this.pendingOutcome) {
+      return;
+    }
+    this.previewAction(role, message.payload.action);
+    if (this.hasAllActions()) {
+      this.prepareLocalOutcome();
     }
   }
 
@@ -360,7 +361,7 @@ export class GameStateManager {
     return PLAYER_ORDER.every((role) => Boolean(this.actions[role]));
   }
 
-  private async computeLocalHash() {
+  private prepareLocalOutcome() {
     if (!this.runtime) return;
     this.state.status = 'resolving';
     const context = { map: this.runtime.map, unitsById: UNITS_BY_ID } as const;
@@ -383,11 +384,6 @@ export class GameStateManager {
     this.state.activeYouId = this.getActiveUnitId('you');
     this.state.activeOpponentId = this.getActiveUnitId('opponent');
     this.emit();
-    const payload = encodeRoundHashPayload(outcome.diff, this.roundSeed);
-    const hash = await sha256(payload);
-    for (const listener of this.hashListeners) {
-      listener({ round: outcome.next.round, hash });
-    }
     if (outcome.frames.length > 0) {
       for (const listener of this.timelineListeners) {
         listener(outcome.frames);
@@ -422,6 +418,7 @@ export class GameStateManager {
     this.previewRound = preview.round;
     const bothActionsKnown = Boolean(this.actions.you && this.actions.opponent);
     this.previewMode = bothActionsKnown ? 'full' : 'partial';
+    this.state.status = 'resolving';
     if (bothActionsKnown) {
       this.state.youUnits = preview.teams.you.units.map(toClientRuntimeUnit);
       this.state.opponentUnits = preview.teams.opponent.units.map(toClientRuntimeUnit);
@@ -475,15 +472,6 @@ function extractGraves(diff: RoundDiff) {
 function getLastFrameTime(frames: SimulationFrame[]): number {
   if (frames.length === 0) return 0;
   return frames[frames.length - 1].time;
-}
-
-async function sha256(value: string) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(value);
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
 }
 
 function buildContinuationTimeline(

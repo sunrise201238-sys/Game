@@ -3,7 +3,7 @@ import { GameStateManager } from './state';
 import type { ClientUnitState } from './state';
 import { Renderer } from './render';
 import { GameSocket } from './network';
-import { PHYSICS_CONSTANTS, serializeCommitPayload } from '@slingshot/shared';
+import { PHYSICS_CONSTANTS } from '@slingshot/shared';
 import type { ClientMessage } from '@slingshot/shared';
 
 type GameMode = 'pve' | 'pvp';
@@ -19,8 +19,6 @@ function getCurrentMode(): GameMode {
 }
 
 const PLAYER_ID_KEY = 'slingshot.playerId';
-const COMMIT_SALT = import.meta.env.VITE_COMMIT_SALT ?? 'client-salt';
-
 function loadPlayerId(): string {
   let id = localStorage.getItem(PLAYER_ID_KEY);
   if (!id) {
@@ -55,8 +53,6 @@ const playAgainEl = document.getElementById('play-again')! as HTMLButtonElement;
 const renderer = new Renderer(canvas);
 let dragStart: { x: number; y: number } | null = null;
 let dragVec: { x: number; y: number } = { x: 0, y: 0 };
-let pendingAction: { round: number; action: { unitId: string; dragVec: { x: number; y: number }; skill?: string }; nonce: string } | null = null;
-let revealOpenedForRound: number | null = null;
 let lastMatchId: string | undefined;
 
 function updateModeButtons() {
@@ -134,7 +130,7 @@ state.subscribe((snapshot) => {
       playAgainEl.hidden = true;
       break;
     case 'resolving':
-      statusMessage = i18n.t('ui.awaitingReveal');
+      statusMessage = i18n.t('ui.resolvingTurn');
       playAgainEl.hidden = true;
       break;
     case 'finished':
@@ -152,14 +148,6 @@ state.subscribe((snapshot) => {
   countdownEl.textContent = snapshot.status === 'ready' && snapshot.countdownMs > 0 ? (snapshot.countdownMs / 1000).toFixed(1) : '';
   updateTeamPanel(teamYouList, snapshot.youUnits, snapshot.activeYouId, 'you');
   updateTeamPanel(teamOpponentList, snapshot.opponentUnits, snapshot.activeOpponentId, 'opponent');
-});
-
-state.onHash(({ round, hash }) => {
-  const message: ClientMessage = {
-    type: 'CLIENT_RESULT_HASH',
-    payload: { round, hash },
-  };
-  socket.send(message);
 });
 
 state.onTimeline((frames) => {
@@ -223,15 +211,8 @@ const WS_URL = resolveSocketUrl(configuredWsUrl ?? null);
 const socket = new GameSocket(
   WS_URL,
   (message) => {
-    if (message.type === 'REVEAL_OPEN') {
-      revealOpenedForRound = message.payload.round;
-      sendPendingReveal();
-      return;
-    }
     state.updateFromServer(message);
     if (message.type === 'ROUND_START') {
-      revealOpenedForRound = null;
-      pendingAction = null;
       playAgainEl.hidden = true;
       playAgainEl.disabled = true;
     }
@@ -279,7 +260,7 @@ canvas.addEventListener('pointermove', (evt) => {
   renderer.setAim(dragStart, dragVec);
 });
 
-canvas.addEventListener('pointerup', async (evt) => {
+canvas.addEventListener('pointerup', (evt) => {
   if (!dragStart) return;
   canvas.releasePointerCapture(evt.pointerId);
   const pos = canvasPos(evt);
@@ -291,7 +272,7 @@ canvas.addEventListener('pointerup', async (evt) => {
   const unitId = state.getActiveUnitId('you');
   if (!unitId) return;
   const vec = normalizeVector(dragVec);
-  await queueAction(unitId, vec, snapshot.round);
+  queueAction(unitId, vec, snapshot.round);
   powerFillEl.style.width = '0%';
 });
 
@@ -301,30 +282,15 @@ canvas.addEventListener('pointercancel', () => {
   powerFillEl.style.width = '0%';
 });
 
-async function queueAction(unitId: string, vec: { x: number; y: number }, round: number) {
+function queueAction(unitId: string, vec: { x: number; y: number }, round: number) {
   const action = { unitId, dragVec: vec };
   state.registerPlayerAction(action);
-  const nonce = crypto.randomUUID();
-  const commitHash = await sha256(serializeCommitPayload(action, nonce, COMMIT_SALT));
-  const commitMessage: ClientMessage = {
-    type: 'ACTION_COMMIT',
-    payload: { round, hash: commitHash },
+  const submit: ClientMessage = {
+    type: 'ACTION_SUBMIT',
+    payload: { round, action },
   };
-  socket.send(commitMessage);
-  pendingAction = { round, action, nonce };
-  sendPendingReveal();
-  state.setStatus('waiting');
+  socket.send(submit);
   state.updateCountdown(0);
-}
-
-function sendPendingReveal() {
-  if (!pendingAction || revealOpenedForRound !== pendingAction.round) return;
-  const reveal: ClientMessage = {
-    type: 'ACTION_REVEAL',
-    payload: { round: pendingAction.round, action: pendingAction.action, nonce: pendingAction.nonce },
-  };
-  socket.send(reveal);
-  pendingAction = null;
 }
 
 function stateSnapshot() {
@@ -342,15 +308,6 @@ function normalizeVector(vec: { x: number; y: number }) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
-}
-
-async function sha256(value: string) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(value);
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
 }
 
 function updateTeamPanel(

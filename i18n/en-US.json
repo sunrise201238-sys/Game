@@ -9,7 +9,7 @@
   "ui.queueBot": "Spawning a practice bot...",
   "ui.queueOpponent": "Matching you with another player...",
   "ui.waitingTurn": "Waiting for opponent's shot",
-  "ui.awaitingReveal": "Resolving turn...",
+  "ui.resolvingTurn": "Resolving turn...",
   "ui.finished": "Match finished — winner: {winner}",
   "ui.finishedNoWinner": "Match finished",
   "ui.round": "Round {round}",

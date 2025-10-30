@@ -9,7 +9,7 @@
   "ui.queueBot": "建立電腦對戰中...",
   "ui.queueOpponent": "尋找線上對手...",
   "ui.waitingTurn": "等待對手出手",
-  "ui.awaitingReveal": "回合結算中...",
+  "ui.resolvingTurn": "回合結算中...",
   "ui.finished": "對戰結束 — 勝者：{winner}",
   "ui.finishedNoWinner": "對戰結束",
   "ui.round": "第 {round} 回合",
