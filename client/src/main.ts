@@ -106,8 +106,6 @@ state.subscribe((snapshot) => {
   if (snapshot.matchId && snapshot.matchId !== lastMatchId) {
     lastMatchId = snapshot.matchId;
     renderer.reset();
-    playAgainEl.hidden = true;
-    playAgainEl.disabled = false;
   }
   renderer.update(snapshot);
   roundEl.textContent = snapshot.round > 0 ? i18n.t('ui.round', { round: snapshot.round }) : '';
@@ -119,29 +117,22 @@ state.subscribe((snapshot) => {
       break;
     case 'queueing':
       statusMessage = i18n.t(mode === 'pve' ? 'ui.queueBot' : 'ui.queueOpponent');
-      playAgainEl.hidden = true;
       break;
     case 'ready':
       statusMessage = i18n.t('ui.ready');
-      playAgainEl.hidden = true;
       break;
     case 'waiting':
       statusMessage = i18n.t('ui.waitingTurn');
-      playAgainEl.hidden = true;
       break;
     case 'resolving':
       statusMessage = i18n.t('ui.resolvingTurn');
-      playAgainEl.hidden = true;
       break;
     case 'finished':
       statusMessage = snapshot.summary
         ? i18n.t('ui.finished', { winner: snapshot.summary.winner })
         : i18n.t('ui.finishedNoWinner');
-      playAgainEl.hidden = false;
-      playAgainEl.disabled = false;
       break;
     default:
-      playAgainEl.hidden = true;
       break;
   }
   statusEl.textContent = statusMessage;
@@ -162,8 +153,6 @@ state.onDiff((diff) => {
 
 state.onMatchEnd(() => {
   renderer.reset();
-  playAgainEl.hidden = false;
-  playAgainEl.disabled = false;
 });
 
 setInterval(() => {
@@ -213,8 +202,8 @@ const socket = new GameSocket(
   (message) => {
     state.updateFromServer(message);
     if (message.type === 'ROUND_START') {
-      playAgainEl.hidden = true;
-      playAgainEl.disabled = true;
+      // ensure countdown resets when a new round begins
+      state.updateCountdown(Math.max(message.payload.deadlineTs - Date.now(), 0));
     }
   },
   (status) => {
@@ -234,7 +223,6 @@ playAgainEl.addEventListener('click', (event) => {
   renderer.reset();
   state.setStatus('queueing');
   state.updateCountdown(0);
-  playAgainEl.disabled = true;
   socket.send({ type: 'JOIN_QUEUE', payload: { playerId } });
 });
 
@@ -244,7 +232,7 @@ function canvasPos(evt: PointerEvent) {
 }
 
 canvas.addEventListener('pointerdown', (evt) => {
-  if (stateSnapshot().status !== 'ready') return;
+  if (!state.canAct()) return;
   dragStart = canvasPos(evt);
   dragVec = { x: 0, y: 0 };
   canvas.setPointerCapture(evt.pointerId);
@@ -267,8 +255,11 @@ canvas.addEventListener('pointerup', (evt) => {
   dragVec = { x: pos.x - dragStart.x, y: pos.y - dragStart.y };
   dragStart = null;
   renderer.setAim(null);
+  if (!state.canAct()) {
+    powerFillEl.style.width = '0%';
+    return;
+  }
   const snapshot = stateSnapshot();
-  if (snapshot.status !== 'ready') return;
   const unitId = state.getActiveUnitId('you');
   if (!unitId) return;
   const vec = normalizeVector(dragVec);
@@ -283,6 +274,7 @@ canvas.addEventListener('pointercancel', () => {
 });
 
 function queueAction(unitId: string, vec: { x: number; y: number }, round: number) {
+  if (!state.canAct()) return;
   const action = { unitId, dragVec: vec };
   state.registerPlayerAction(action);
   const submit: ClientMessage = {
