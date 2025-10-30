@@ -1,4 +1,4 @@
-import { HP_BAR_HEIGHT, MAP_DEFINITION } from './config';
+import { HP_BAR_HEIGHT } from './config';
 import { normalize, scale } from './math';
 import type {
   GameState,
@@ -8,6 +8,7 @@ import type {
   SimulationFrameZone,
   UnitState,
   Vector,
+  TeamId,
 } from './types';
 
 interface RenderOptions {
@@ -18,18 +19,23 @@ interface RenderOptions {
 export class Renderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
-  private map: MapDefinition = MAP_DEFINITION;
+  private map: MapDefinition;
   private dpr = window.devicePixelRatio || 1;
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, map: MapDefinition) {
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       throw new Error('Canvas context not available');
     }
     this.canvas = canvas;
     this.ctx = ctx;
+    this.map = map;
     this.resizeToMap(this.map);
     window.addEventListener('resize', () => this.resizeToMap(this.map));
+  }
+
+  setMap(map: MapDefinition): void {
+    this.resizeToMap(map);
   }
 
   resizeToMap(map: MapDefinition): void {
@@ -53,7 +59,7 @@ export class Renderer {
     this.drawWalls();
     this.drawZones(state.activeZones);
     this.drawGraves(state.graves);
-    this.drawUnits(state.units, state.activeTeam);
+    this.drawUnits(state);
     this.drawProjectiles(state.activeProjectiles);
     this.drawDragIndicator(state, options);
     this.drawStatus(state);
@@ -119,18 +125,46 @@ export class Renderer {
     ctx.globalAlpha = 1;
   }
 
-  private drawUnits(units: UnitState[], activeTeam: number): void {
+  private drawUnits(state: GameState): void {
     const { ctx } = this;
-    ctx.lineWidth = 3;
-    for (const unit of units) {
+    const highlightId = state.phase !== 'ended' ? this.getUpcomingUnitId(state, state.activeTeam) : null;
+    const baseStroke: Record<TeamId, string> = {
+      0: 'rgba(74,222,128,0.65)',
+      1: 'rgba(249,115,22,0.65)',
+    };
+    const highlightStroke: Record<TeamId, string> = {
+      0: '#bbf7d0',
+      1: '#fed7aa',
+    };
+
+    for (const unit of state.units) {
       const radius = unit.def.radius;
-      const alpha = unit.alive ? 1 : 0.2;
+      const alpha = unit.alive ? 1 : 0.25;
       ctx.fillStyle = this.hexToRgba(unit.def.color, alpha);
-      ctx.strokeStyle = unit.team === activeTeam ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.35)';
       ctx.beginPath();
       ctx.arc(unit.position.x, unit.position.y, radius, 0, Math.PI * 2);
       ctx.fill();
+
+      const isHighlight = Boolean(
+        highlightId &&
+          unit.id === highlightId &&
+          unit.alive &&
+          state.activeTeam === unit.team &&
+          state.phase !== 'ended'
+      );
+
+      ctx.save();
+      ctx.lineWidth = isHighlight ? 4 : 3;
+      const stroke = baseStroke[unit.team] ?? 'rgba(255,255,255,0.55)';
+      ctx.strokeStyle = isHighlight ? highlightStroke[unit.team] ?? stroke : stroke;
+      if (isHighlight) {
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = highlightStroke[unit.team] ?? stroke;
+      }
+      ctx.beginPath();
+      ctx.arc(unit.position.x, unit.position.y, radius, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.restore();
 
       if (unit.alive) {
         this.drawHpBar(unit);
@@ -187,7 +221,8 @@ export class Renderer {
   private drawDragIndicator(state: GameState, options: RenderOptions): void {
     const { dragOrigin, dragCurrent } = options;
     if (!dragOrigin || !dragCurrent) return;
-    const activeUnit = state.units.find((u) => u.team === state.activeTeam && u.alive);
+    const nextId = this.getUpcomingUnitId(state, state.activeTeam);
+    const activeUnit = nextId ? state.units.find((u) => u.id === nextId) : undefined;
     if (!activeUnit) return;
 
     const { ctx } = this;
@@ -239,6 +274,20 @@ export class Renderer {
     if (state.phase === 'animating') return 'Resolving move…';
     if (state.phase === 'bot-planning') return 'Bot is planning…';
     return `Round ${state.round}: Your turn`;
+  }
+
+  private getUpcomingUnitId(state: GameState, team: TeamId): string | null {
+    const order = state.orders[team];
+    if (!order) return null;
+    for (let offset = 0; offset < order.queue.length; offset += 1) {
+      const index = (order.nextIndex + offset) % order.queue.length;
+      const unitId = order.queue[index];
+      const unit = state.units.find((u) => u.id === unitId && u.alive);
+      if (unit) {
+        return unit.id;
+      }
+    }
+    return null;
   }
 
   private hexToRgba(hex: string, alpha: number): string {

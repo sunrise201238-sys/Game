@@ -1,4 +1,4 @@
-import { BOT_SPAWNS, GAME_CONSTANTS, PLAYER_SPAWNS, UNIT_DEFINITIONS } from './config';
+import { GAME_CONSTANTS, TEAM_LOADOUT, getUnitDefinition } from './config';
 import { add, clampMagnitude, distance, length, normalize, scale, subtract } from './math';
 import type {
   DragAction,
@@ -14,8 +14,8 @@ import type {
   Vector,
   ZoneState,
   StatusEffect,
+  MapDefinition,
 } from './types';
-import { MAP_DEFINITION as MAP } from './config';
 
 const PLAYER_TEAM: TeamId = 0;
 const BOT_TEAM: TeamId = 1;
@@ -49,19 +49,26 @@ export class GameEngine {
   private pendingBotTimeout: number | null = null;
   private projectileCounter = 0;
   private zoneCounter = 0;
+  private map: MapDefinition;
+  private readonly loadout: string[];
 
-  constructor(listeners: EngineListeners) {
+  constructor(listeners: EngineListeners, map: MapDefinition, loadout: string[] = TEAM_LOADOUT) {
     this.listeners = listeners;
+    this.map = structuredClone(map);
+    this.loadout = [...loadout];
     this.state = this.createInitialState();
   }
 
-  startNewGame(): void {
+  startNewGame(map?: MapDefinition): void {
     if (this.pendingBotTimeout) {
       window.clearTimeout(this.pendingBotTimeout);
       this.pendingBotTimeout = null;
     }
     this.projectileCounter = 0;
     this.zoneCounter = 0;
+    if (map) {
+      this.map = structuredClone(map);
+    }
     this.state = this.createInitialState();
     this.emitState();
   }
@@ -255,6 +262,7 @@ export class GameEngine {
       };
     }
 
+    const map = this.map;
     const launchDir = normalize(action.vector);
     const launchSpeed = action.power * GAME_CONSTANTS.dragPowerScale;
     attacker.velocity = scale(launchDir, launchSpeed);
@@ -287,8 +295,8 @@ export class GameEngine {
       const placementDistance = Math.min(spec.placementRange, action.power * spec.travelScale);
       const desiredCenter = add(attacker.position, scale(launchDir, placementDistance));
       const center = {
-        x: Math.min(MAP.width - spec.radius, Math.max(spec.radius, desiredCenter.x)),
-        y: Math.min(MAP.height - spec.radius, Math.max(spec.radius, desiredCenter.y)),
+        x: Math.min(map.width - spec.radius, Math.max(spec.radius, desiredCenter.x)),
+        y: Math.min(map.height - spec.radius, Math.max(spec.radius, desiredCenter.y)),
       };
       const zone: ZoneState = {
         id: `zone-${this.zoneCounter++}`,
@@ -360,7 +368,7 @@ export class GameEngine {
           !this.pointInsideCircleBounds(projectile.position, projectile.radius);
 
         if (!remove) {
-          for (const wall of MAP.walls) {
+          for (const wall of map.walls) {
             if (this.pointInRect(projectile.position, wall)) {
               remove = true;
               break;
@@ -400,16 +408,16 @@ export class GameEngine {
           clone.position.x = radius;
           currentVel.x = -currentVel.x * GAME_CONSTANTS.wallBounce;
         }
-        if (clone.position.x + radius > MAP.width) {
-          clone.position.x = MAP.width - radius;
+        if (clone.position.x + radius > map.width) {
+          clone.position.x = map.width - radius;
           currentVel.x = -currentVel.x * GAME_CONSTANTS.wallBounce;
         }
         if (clone.position.y - radius < 0) {
           clone.position.y = radius;
           currentVel.y = -currentVel.y * GAME_CONSTANTS.wallBounce;
         }
-        if (clone.position.y + radius > MAP.height) {
-          clone.position.y = MAP.height - radius;
+        if (clone.position.y + radius > map.height) {
+          clone.position.y = map.height - radius;
           currentVel.y = -currentVel.y * GAME_CONSTANTS.wallBounce;
         }
       }
@@ -450,7 +458,7 @@ export class GameEngine {
         }
       }
 
-      for (const wall of MAP.walls) {
+      for (const wall of map.walls) {
         for (const clone of clones) {
           const currentVel = activeVelocities.get(clone.id);
           if (!currentVel) continue;
@@ -658,25 +666,27 @@ export class GameEngine {
 
   private pointInsideMap(unit: UnitClone): boolean {
     const { radius } = unit.def;
+    const map = this.map;
     return (
       unit.position.x >= radius &&
-      unit.position.x <= MAP.width - radius &&
+      unit.position.x <= map.width - radius &&
       unit.position.y >= radius &&
-      unit.position.y <= MAP.height - radius
+      unit.position.y <= map.height - radius
     );
   }
 
   private pointInsideCircleBounds(position: Vector, radius: number): boolean {
+    const map = this.map;
     return (
       position.x >= radius &&
-      position.x <= MAP.width - radius &&
+      position.x <= map.width - radius &&
       position.y >= radius &&
-      position.y <= MAP.height - radius
+      position.y <= map.height - radius
     );
   }
 
   private isInHazard(position: Vector): boolean {
-    return MAP.lakes.some((lake) => this.pointInRect(position, lake));
+    return this.map.lakes.some((lake) => this.pointInRect(position, lake));
   }
 
   private createBotAction(unit: UnitState): DragAction {
@@ -735,6 +745,8 @@ export class GameEngine {
 
   private createInitialState(): GameState {
     const units: UnitState[] = [];
+    const map = this.map;
+
     const createUnit = (def: UnitDefinition, team: TeamId, position: Vector, suffix: number): UnitState => ({
       id: `${def.id}-${team}-${suffix}`,
       def,
@@ -745,9 +757,12 @@ export class GameEngine {
       alive: true,
     });
 
-    UNIT_DEFINITIONS.forEach((def, index) => {
-      units.push(createUnit(def, PLAYER_TEAM, PLAYER_SPAWNS[index % PLAYER_SPAWNS.length], index));
-      units.push(createUnit(def, BOT_TEAM, BOT_SPAWNS[index % BOT_SPAWNS.length], index));
+    this.loadout.forEach((unitId, index) => {
+      const def = getUnitDefinition(unitId);
+      const playerSpawn = map.playerSpawns[index % map.playerSpawns.length];
+      const botSpawn = map.botSpawns[index % map.botSpawns.length];
+      units.push(createUnit(def, PLAYER_TEAM, playerSpawn, index));
+      units.push(createUnit(def, BOT_TEAM, botSpawn, index));
     });
 
     const orderPlayer = this.createOrder(units, PLAYER_TEAM);
@@ -768,6 +783,7 @@ export class GameEngine {
       statuses: [],
       activeProjectiles: [],
       activeZones: [],
+      mapId: map.id,
     };
 
     return state;

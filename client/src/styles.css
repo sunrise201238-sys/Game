@@ -38,6 +38,42 @@ header h1 {
   text-transform: uppercase;
 }
 
+.map-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.map-picker label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.7;
+}
+
+.map-picker select {
+  appearance: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  padding: 0.45rem 2.1rem 0.45rem 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  position: relative;
+  min-width: 180px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.map-picker select:hover,
+.map-picker select:focus {
+  border-color: rgba(83, 225, 255, 0.65);
+  box-shadow: 0 0 12px rgba(83, 225, 255, 0.25);
+  outline: none;
+}
+
 header button {
   border: none;
   border-radius: 999px;
@@ -179,6 +215,14 @@ footer {
   header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .map-picker {
+    width: 100%;
+  }
+
+  .map-picker select {
+    width: 100%;
   }
 
   header button {

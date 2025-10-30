@@ -1,17 +1,28 @@
-import { MAP_DEFINITION } from './config';
+import { DEFAULT_MAP_ID, MAPS, getMapById } from './config';
 import { GameEngine } from './engine';
 import { Renderer } from './renderer';
 import type { GameState, TeamId, UnitState, Vector } from './types';
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const restartButton = document.getElementById('restart-btn') as HTMLButtonElement;
+const mapSelect = document.getElementById('map-select') as HTMLSelectElement;
 const roundLabel = document.getElementById('round-label') as HTMLSpanElement;
 const phaseLabel = document.getElementById('phase-label') as HTMLSpanElement;
 const playerList = document.getElementById('player-units') as HTMLUListElement;
 const botList = document.getElementById('bot-units') as HTMLUListElement;
 const hintText = document.getElementById('hint-text') as HTMLParagraphElement;
 
-const renderer = new Renderer(canvas);
+let currentMap = getMapById(DEFAULT_MAP_ID);
+
+for (const map of MAPS) {
+  const option = document.createElement('option');
+  option.value = map.id;
+  option.textContent = map.name;
+  mapSelect.append(option);
+}
+mapSelect.value = currentMap.id;
+
+const renderer = new Renderer(canvas, currentMap);
 
 let currentState: GameState;
 let isDragging = false;
@@ -20,6 +31,11 @@ let dragCurrent: Vector | null = null;
 
 const engine = new GameEngine({
   onState: (state) => {
+    if (state.mapId !== currentMap.id) {
+      currentMap = getMapById(state.mapId);
+      renderer.setMap(currentMap);
+      mapSelect.value = currentMap.id;
+    }
     currentState = state;
     updateUi(state);
     renderer.render(state, {
@@ -30,14 +46,26 @@ const engine = new GameEngine({
   onFrame: () => {
     // no-op: renderer re-renders when state updates
   },
-});
+}, currentMap);
 
 currentState = engine.getSnapshot();
 updateUi(currentState);
 renderer.render(currentState);
 
 restartButton.addEventListener('click', () => {
-  engine.startNewGame();
+  isDragging = false;
+  dragOrigin = null;
+  dragCurrent = null;
+  engine.startNewGame(currentMap);
+});
+
+mapSelect.addEventListener('change', () => {
+  currentMap = getMapById(mapSelect.value);
+  renderer.setMap(currentMap);
+  isDragging = false;
+  dragOrigin = null;
+  dragCurrent = null;
+  engine.startNewGame(currentMap);
 });
 
 canvas.addEventListener('pointerdown', (event) => {
@@ -90,8 +118,8 @@ function toWorldPoint(event: PointerEvent): Vector {
   const ratioX = (event.clientX - rect.left) / rect.width;
   const ratioY = (event.clientY - rect.top) / rect.height;
   return {
-    x: MAP_DEFINITION.width * ratioX,
-    y: MAP_DEFINITION.height * ratioY,
+    x: currentMap.width * ratioX,
+    y: currentMap.height * ratioY,
   };
 }
 
@@ -113,13 +141,16 @@ function updateUi(state: GameState): void {
   updateUnitList(playerList, state, 0, activeUnit?.id ?? null);
   updateUnitList(botList, state, 1, activeUnit?.id ?? null);
 
-  hintText.textContent = state.phase === 'aim'
+  const baseHint = state.phase === 'aim'
     ? 'Drag your highlighted unit away from where you want it to travel, then release.'
     : state.phase === 'bot-planning'
     ? 'Bot is preparing a move…'
     : state.winner !== null
     ? 'Tap "Start New Game" to play again.'
     : 'Resolving actions…';
+  const mapMeta = getMapById(state.mapId);
+  const mapDetails = mapMeta.description ? ` • ${mapMeta.name}: ${mapMeta.description}` : '';
+  hintText.textContent = `${baseHint}${mapDetails}`;
 }
 
 function updateUnitList(container: HTMLUListElement, state: GameState, team: TeamId, activeId: string | null) {

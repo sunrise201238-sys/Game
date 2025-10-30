@@ -63,10 +63,15 @@ export interface Rect {
 }
 
 export interface MapDefinition {
+  id: string;
+  name: string;
   width: number;
   height: number;
   lakes: Rect[];
   walls: Rect[];
+  playerSpawns: Vector[];
+  botSpawns: Vector[];
+  description?: string;
 }
 
 export type GamePhase = 'aim' | 'bot-planning' | 'animating' | 'ended';
@@ -106,6 +111,7 @@ export interface GameState {
   statuses: StatusEffect[];
   activeProjectiles: SimulationFrameProjectile[];
   activeZones: SimulationFrameZone[];
+  mapId: string;
 }
 
 export interface SimulationFrameUnit {
