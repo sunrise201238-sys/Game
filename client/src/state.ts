@@ -381,6 +381,9 @@ export class GameStateManager {
     if (!this.runtime) return;
     this.state.status = 'resolving';
     const context = { map: this.runtime.map, unitsById: UNITS_BY_ID } as const;
+    const hadPartialPreview = this.previewMode === 'partial' && Boolean(this.previewTimeline?.length);
+    const priorPreviewTimeline = this.previewTimeline ?? null;
+    const priorPreviewActor = this.previewActor;
     const outcome = simulateRound(context, {
       state: this.runtime,
       actions: {
@@ -390,22 +393,34 @@ export class GameStateManager {
       actingOrder: this.getRoundOrder(),
       captureTimeline: true,
     });
+    let framesToEmit = outcome.frames;
+    if (hadPartialPreview && priorPreviewTimeline?.length) {
+      framesToEmit = buildContinuationTimeline(
+        priorPreviewTimeline,
+        outcome.frames,
+        priorPreviewActor,
+      );
+    } else if (framesToEmit.length > 0) {
+      framesToEmit = normalizeTimeline(framesToEmit, framesToEmit[0]?.time ?? 0);
+    }
+
+    outcome.frames = framesToEmit;
     this.pendingOutcome = outcome;
     this.previewState = outcome.next;
     this.previewRound = outcome.next.round;
     this.previewMode = 'full';
-    this.previewTimeline = outcome.frames;
+    this.previewTimeline = framesToEmit;
     this.previewActor = 'both';
-    this.previewLastTime = getLastFrameTime(outcome.frames);
+    this.previewLastTime = getLastFrameTime(framesToEmit);
     this.state.youUnits = outcome.next.teams.you.units.map(toClientRuntimeUnit);
     this.state.opponentUnits = outcome.next.teams.opponent.units.map(toClientRuntimeUnit);
     this.state.graves = toClientGraves(outcome.next);
     this.state.activeYouId = this.getActiveUnitId('you');
     this.state.activeOpponentId = this.getActiveUnitId('opponent');
     this.emit();
-    if (outcome.frames.length > 0) {
+    if (framesToEmit.length > 0) {
       for (const listener of this.timelineListeners) {
-        listener(outcome.frames);
+        listener(framesToEmit);
       }
     }
   }
