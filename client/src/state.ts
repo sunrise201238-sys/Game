@@ -274,7 +274,7 @@ export class GameStateManager {
     this.state.countdownMs = 0;
     this.state.youUnits = this.runtime.teams.you.units.map(toClientRuntimeUnit);
     this.state.opponentUnits = this.runtime.teams.opponent.units.map(toClientRuntimeUnit);
-    this.state.graves = extractGraves(message.payload.diff);
+    this.state.graves = toClientGraves(this.runtime);
     this.actions = {};
     this.pendingOutcome = null;
     this.state.activeYouId = this.getActiveUnitId('you');
@@ -349,6 +349,7 @@ export class GameStateManager {
     this.previewLastTime = 0;
     this.state.youUnits = snapshot.you.units.map(toClientUnit);
     this.state.opponentUnits = snapshot.opponent.units.map(toClientUnit);
+    this.state.graves = toClientGraves(this.runtime);
     this.state.round = snapshot.round;
     this.state.countdownMs = 0;
     this.state.status = 'waiting';
@@ -381,6 +382,9 @@ export class GameStateManager {
     this.previewTimeline = outcome.frames;
     this.previewActor = 'both';
     this.previewLastTime = getLastFrameTime(outcome.frames);
+    this.state.youUnits = outcome.next.teams.you.units.map(toClientRuntimeUnit);
+    this.state.opponentUnits = outcome.next.teams.opponent.units.map(toClientRuntimeUnit);
+    this.state.graves = toClientGraves(outcome.next);
     this.state.activeYouId = this.getActiveUnitId('you');
     this.state.activeOpponentId = this.getActiveUnitId('opponent');
     this.emit();
@@ -419,11 +423,9 @@ export class GameStateManager {
     const bothActionsKnown = Boolean(this.actions.you && this.actions.opponent);
     this.previewMode = bothActionsKnown ? 'full' : 'partial';
     this.state.status = 'resolving';
-    if (bothActionsKnown) {
-      this.state.youUnits = preview.teams.you.units.map(toClientRuntimeUnit);
-      this.state.opponentUnits = preview.teams.opponent.units.map(toClientRuntimeUnit);
-      this.state.graves = extractGraves(outcome.diff);
-    }
+    this.state.youUnits = preview.teams.you.units.map(toClientRuntimeUnit);
+    this.state.opponentUnits = preview.teams.opponent.units.map(toClientRuntimeUnit);
+    this.state.graves = toClientGraves(preview);
     this.state.activeYouId = this.getActiveUnitId('you');
     this.state.activeOpponentId = this.getActiveUnitId('opponent');
     this.emit();
@@ -465,8 +467,11 @@ function toClientRuntimeUnit(unit: RuntimeUnit): ClientUnitState {
   };
 }
 
-function extractGraves(diff: RoundDiff) {
-  return diff.graves.map((grave) => ({ position: { ...grave.position }, count: grave.count }));
+function toClientGraves(runtime: MatchRuntimeState): ClientState['graves'] {
+  return Array.from(runtime.graveTally.values()).map((grave) => ({
+    position: { ...grave.position },
+    count: grave.count,
+  }));
 }
 
 function getLastFrameTime(frames: SimulationFrame[]): number {
