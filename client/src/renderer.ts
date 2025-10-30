@@ -251,21 +251,20 @@ export class Renderer {
 
     const { ctx } = this;
     ctx.save();
-    ctx.lineWidth = 3;
-    const baseStroke = state.activeTeam === 0 ? '#22c55e' : '#f97316';
-    const extensionStroke = state.activeTeam === 0 ? 'rgba(134,239,172,0.9)' : 'rgba(253,186,116,0.9)';
+    ctx.lineWidth = 3.5;
+    const baseStroke = '#f8fafc';
+    const extensionStroke = state.activeTeam === 0 ? '#38bdf8' : '#fb923c';
     ctx.strokeStyle = baseStroke;
-    ctx.setLineDash([12, 8]);
+    ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(dragOrigin.x, dragOrigin.y);
     ctx.lineTo(previewEnd.x, previewEnd.y);
     ctx.stroke();
-    ctx.setLineDash([]);
 
     if (extensionEnd) {
       ctx.save();
       ctx.strokeStyle = extensionStroke;
-      ctx.globalAlpha = 0.9;
+      ctx.globalAlpha = 0.85;
       ctx.setLineDash([6, 6]);
       ctx.lineWidth = 2.5;
       ctx.beginPath();
