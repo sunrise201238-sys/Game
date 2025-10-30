@@ -14,6 +14,7 @@ export interface ProjectileSpec {
   knockback: number;
   color: string;
   previewScale?: number;
+  previewExtension?: number;
 }
 
 export interface AoeSpec {

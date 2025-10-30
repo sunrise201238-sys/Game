@@ -231,10 +231,21 @@ export class Renderer {
     const clampedPower = Math.min(activeUnit.def.maxPower, dragDistance);
     const launchDir = normalize(dragVector);
     let previewDistance = clampedPower * 1.2;
+    let extensionEnd: Vector | null = null;
     if (activeUnit.def.projectile) {
-      const { maxDistance, previewScale } = activeUnit.def.projectile;
+      const { maxDistance, previewScale, previewExtension } = activeUnit.def.projectile;
       const scale = previewScale ?? 1.2;
       previewDistance = Math.min(maxDistance, clampedPower * scale);
+      if (previewExtension && previewExtension > 0) {
+        const allowable = Math.max(0, maxDistance - previewDistance);
+        const extensionLength = Math.min(previewExtension, allowable);
+        if (extensionLength > 1) {
+          extensionEnd = addVectors(
+            dragOrigin,
+            scale(launchDir, previewDistance + extensionLength)
+          );
+        }
+      }
     }
     const previewEnd = addVectors(dragOrigin, scale(launchDir, previewDistance));
 
@@ -249,7 +260,20 @@ export class Renderer {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    const arrowHead = addVectors(previewEnd, scale(launchDir, 20));
+    if (extensionEnd) {
+      ctx.globalAlpha = 0.75;
+      ctx.setLineDash([6, 6]);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(previewEnd.x, previewEnd.y);
+      ctx.lineTo(extensionEnd.x, extensionEnd.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
+
+    const arrowTarget = extensionEnd ?? previewEnd;
+    const arrowHead = addVectors(arrowTarget, scale(launchDir, 20));
     ctx.fillStyle = ctx.strokeStyle;
     ctx.beginPath();
     ctx.moveTo(arrowHead.x, arrowHead.y);
