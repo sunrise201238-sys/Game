@@ -142,7 +142,7 @@ export class Renderer {
         continue;
       }
       const radius = unit.def.radius;
-      ctx.fillStyle = this.hexToRgba(unit.def.color, 1);
+      ctx.fillStyle = this.getTeamFill(unit.def.color, unit.team);
       ctx.beginPath();
       ctx.arc(unit.position.x, unit.position.y, radius, 0, Math.PI * 2);
       ctx.fill();
@@ -190,7 +190,7 @@ export class Renderer {
     const y = unit.position.y - unit.def.radius - HP_BAR_HEIGHT - 4;
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(x, y, width, HP_BAR_HEIGHT);
-    ctx.fillStyle = '#00ff95';
+    ctx.fillStyle = unit.team === 0 ? '#4ade80' : '#f97316';
     ctx.fillRect(x, y, width * ratio, HP_BAR_HEIGHT);
     ctx.strokeStyle = 'rgba(255,255,255,0.7)';
     ctx.strokeRect(x, y, width, HP_BAR_HEIGHT);
@@ -223,32 +223,60 @@ export class Renderer {
     const activeUnit = nextId ? state.units.find((u) => u.id === nextId) : undefined;
     if (!activeUnit) return;
 
+    const dragVector = { x: dragOrigin.x - dragCurrent.x, y: dragOrigin.y - dragCurrent.y };
+    const dragDistance = Math.hypot(dragVector.x, dragVector.y);
+    if (dragDistance < 2) return;
+
+    const clampedPower = Math.min(activeUnit.def.maxPower, dragDistance);
+    const launchDir = normalize(dragVector);
+    const previewDistance = clampedPower * 1.2;
+    const previewEnd = addVectors(dragOrigin, scale(launchDir, previewDistance));
+
     const { ctx } = this;
     ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 6]);
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = state.activeTeam === 0 ? 'rgba(74,222,128,0.85)' : 'rgba(249,115,22,0.85)';
+    ctx.setLineDash([12, 8]);
     ctx.beginPath();
     ctx.moveTo(dragOrigin.x, dragOrigin.y);
-    ctx.lineTo(dragCurrent.x, dragCurrent.y);
+    ctx.lineTo(previewEnd.x, previewEnd.y);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    const arrowDir = normalize({ x: dragOrigin.x - dragCurrent.x, y: dragOrigin.y - dragCurrent.y });
-    const arrowTail = dragOrigin;
-    const arrowHead = addVectors(arrowTail, scale(arrowDir, 50));
-
-    ctx.fillStyle = 'rgba(255,255,255,0.8)';
-    ctx.beginPath();
-    ctx.arc(arrowTail.x, arrowTail.y, 6, 0, Math.PI * 2);
-    ctx.fill();
-
+    const arrowHead = addVectors(previewEnd, scale(launchDir, 20));
+    ctx.fillStyle = ctx.strokeStyle;
     ctx.beginPath();
     ctx.moveTo(arrowHead.x, arrowHead.y);
-    ctx.lineTo(arrowHead.x + arrowDir.y * 10, arrowHead.y - arrowDir.x * 10);
-    ctx.lineTo(arrowHead.x - arrowDir.y * 10, arrowHead.y + arrowDir.x * 10);
+    ctx.lineTo(arrowHead.x + launchDir.y * 8, arrowHead.y - launchDir.x * 8);
+    ctx.lineTo(arrowHead.x - launchDir.y * 8, arrowHead.y + launchDir.x * 8);
     ctx.closePath();
     ctx.fill();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath();
+    ctx.arc(dragOrigin.x, dragOrigin.y, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (activeUnit.def.aoe) {
+      const spec = activeUnit.def.aoe;
+      const placementDistance = Math.min(spec.placementRange, clampedPower * spec.travelScale);
+      const desired = addVectors(dragOrigin, scale(launchDir, placementDistance));
+      const center = {
+        x: Math.min(this.map.width - spec.radius, Math.max(spec.radius, desired.x)),
+        y: Math.min(this.map.height - spec.radius, Math.max(spec.radius, desired.y)),
+      };
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle = this.replaceAlpha(spec.color, 0.35);
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, spec.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = this.replaceAlpha(spec.color, 0.85);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, spec.radius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
@@ -265,13 +293,20 @@ export class Renderer {
 
   private composeStatus(state: GameState): string {
     if (state.winner !== null) {
-      if (state.winner === 0) return 'You win!';
-      if (state.winner === 1) return 'Bot wins!';
+      if (state.winner === 0) return state.mode === 'bot' ? 'You win!' : 'Team One wins!';
+      if (state.winner === 1) return state.mode === 'bot' ? 'Bot wins!' : 'Team Two wins!';
       return 'Draw';
     }
     if (state.phase === 'animating') return 'Resolving move…';
-    if (state.phase === 'bot-planning') return 'Bot is planning…';
-    return `Round ${state.round}: Your turn`;
+    if (state.mode === 'bot' && state.phase === 'bot-planning') return 'Bot is planning…';
+    if (state.mode === 'hotseat') {
+      return state.activeTeam === 0
+        ? `Round ${state.round}: Team One`
+        : `Round ${state.round}: Team Two`;
+    }
+    return state.activeTeam === 0
+      ? `Round ${state.round}: Your turn`
+      : `Round ${state.round}: Bot turn`;
   }
 
   private getUpcomingUnitId(state: GameState, team: TeamId): string | null {
@@ -288,13 +323,32 @@ export class Renderer {
     return null;
   }
 
-  private hexToRgba(hex: string, alpha: number): string {
-    const sanitized = hex.replace('#', '');
-    const bigint = parseInt(sanitized, 16);
-    const r = (bigint >> 16) & 255;
-    const g = (bigint >> 8) & 255;
-    const b = bigint & 255;
-    return `rgba(${r},${g},${b},${alpha})`;
+  private getTeamFill(color: string, team: TeamId): string {
+    const base = this.parseColor(color);
+    const tint = team === 0 ? { r: 64, g: 224, b: 208 } : { r: 255, g: 132, b: 68 };
+    const ratio = 0.45;
+    const r = Math.round(base.r * (1 - ratio) + tint.r * ratio);
+    const g = Math.round(base.g * (1 - ratio) + tint.g * ratio);
+    const b = Math.round(base.b * (1 - ratio) + tint.b * ratio);
+    return `rgba(${r},${g},${b},0.95)`;
+  }
+
+  private parseColor(input: string): { r: number; g: number; b: number } {
+    if (input.startsWith('#')) {
+      const hex = input.replace('#', '');
+      const bigint = parseInt(hex, 16);
+      return {
+        r: (bigint >> 16) & 255,
+        g: (bigint >> 8) & 255,
+        b: bigint & 255,
+      };
+    }
+    const match = input.match(/rgba?\(([^)]+)\)/);
+    if (match) {
+      const [r, g, b] = match[1].split(',').map((part) => parseFloat(part.trim()));
+      return { r: Number.isFinite(r) ? r : 255, g: Number.isFinite(g) ? g : 255, b: Number.isFinite(b) ? b : 255 };
+    }
+    return { r: 255, g: 255, b: 255 };
   }
 
   private replaceAlpha(color: string, alpha: number): string {

@@ -1,7 +1,7 @@
 import { DEFAULT_MAP_ID, MAPS, getMapById } from './config';
 import { GameEngine } from './engine';
 import { Renderer } from './renderer';
-import type { GameState, TeamId, UnitState, Vector } from './types';
+import type { GameMode, GameState, TeamId, UnitState, Vector } from './types';
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const restartButton = document.getElementById('restart-btn') as HTMLButtonElement;
@@ -11,8 +11,14 @@ const phaseLabel = document.getElementById('phase-label') as HTMLSpanElement;
 const playerList = document.getElementById('player-units') as HTMLUListElement;
 const botList = document.getElementById('bot-units') as HTMLUListElement;
 const hintText = document.getElementById('hint-text') as HTMLParagraphElement;
+const modeButtons = Array.from(
+  document.querySelectorAll<HTMLButtonElement>('[data-mode]')
+);
+const playerHeading = document.getElementById('team-a-label') as HTMLHeadingElement;
+const opponentHeading = document.getElementById('team-b-label') as HTMLHeadingElement;
 
 let currentMap = getMapById(DEFAULT_MAP_ID);
+let currentMode: GameMode = 'bot';
 
 for (const map of MAPS) {
   const option = document.createElement('option');
@@ -46,7 +52,7 @@ const engine = new GameEngine({
   onFrame: () => {
     // no-op: renderer re-renders when state updates
   },
-}, currentMap);
+}, currentMap, undefined, currentMode);
 
 currentState = engine.getSnapshot();
 updateUi(currentState);
@@ -56,7 +62,7 @@ restartButton.addEventListener('click', () => {
   isDragging = false;
   dragOrigin = null;
   dragCurrent = null;
-  engine.startNewGame(currentMap);
+  engine.startNewGame(currentMap, currentMode);
 });
 
 mapSelect.addEventListener('change', () => {
@@ -65,7 +71,17 @@ mapSelect.addEventListener('change', () => {
   isDragging = false;
   dragOrigin = null;
   dragCurrent = null;
-  engine.startNewGame(currentMap);
+  engine.startNewGame(currentMap, currentMode);
+});
+
+modeButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    const mode = button.dataset.mode as GameMode | undefined;
+    if (!mode || mode === currentMode) return;
+    currentMode = mode;
+    setActiveModeButton(mode);
+    engine.startNewGame(currentMap, currentMode);
+  });
 });
 
 canvas.addEventListener('pointerdown', (event) => {
@@ -126,10 +142,15 @@ function toWorldPoint(event: PointerEvent): Vector {
 function updateUi(state: GameState): void {
   const activeUnit = getActiveUnit(state);
   roundLabel.textContent = `Round ${state.round}`;
+  setActiveModeButton(state.mode);
   if (state.winner !== null) {
-    phaseLabel.textContent = state.winner === 0 ? 'Victory!' : state.winner === 1 ? 'Defeat' : 'Draw';
+    phaseLabel.textContent = state.winner === 0 ? 'Team One Wins!' : state.winner === 1 ? (state.mode === 'bot' ? 'Bot Wins!' : 'Team Two Wins!') : 'Draw';
   } else if (state.phase === 'aim') {
-    phaseLabel.textContent = 'Your turn';
+    if (state.mode === 'hotseat') {
+      phaseLabel.textContent = state.activeTeam === 0 ? 'Team One: Aim' : 'Team Two: Aim';
+    } else {
+      phaseLabel.textContent = state.activeTeam === 0 ? 'Your turn' : 'Bot turn';
+    }
   } else if (state.phase === 'bot-planning') {
     phaseLabel.textContent = 'Bot planning';
   } else if (state.phase === 'animating') {
@@ -138,33 +159,73 @@ function updateUi(state: GameState): void {
     phaseLabel.textContent = '';
   }
 
-  updateUnitList(playerList, state, 0, activeUnit?.id ?? null);
-  updateUnitList(botList, state, 1, activeUnit?.id ?? null);
+  const activeId = activeUnit?.id ?? null;
+  updateUnitList(playerList, state, 0, activeId);
+  updateUnitList(botList, state, 1, activeId);
 
-  const baseHint = state.phase === 'aim'
-    ? 'Drag your highlighted unit away from where you want it to travel, then release.'
-    : state.phase === 'bot-planning'
-    ? 'Bot is preparing a move…'
-    : state.winner !== null
-    ? 'Tap "Start New Game" to play again.'
-    : 'Resolving actions…';
+  if (state.mode === 'hotseat') {
+    playerHeading.textContent = 'Team One';
+    opponentHeading.textContent = 'Team Two';
+  } else {
+    playerHeading.textContent = 'Your Squad';
+    opponentHeading.textContent = 'Bot Squad';
+  }
+
+  const baseHint = (() => {
+    if (state.winner !== null) {
+      return 'Tap "Start New Game" to play again.';
+    }
+    if (state.phase === 'animating') {
+      return 'Resolving actions…';
+    }
+    if (state.mode === 'bot' && state.phase === 'bot-planning') {
+      return 'Bot is preparing a move…';
+    }
+    if (state.mode === 'hotseat') {
+      return state.activeTeam === 0
+        ? 'Team One: drag the highlighted unit opposite your desired path.'
+        : 'Team Two: drag the highlighted unit opposite your desired path.';
+    }
+    return state.activeTeam === 0
+      ? 'Drag your highlighted unit away from where you want it to travel, then release.'
+      : 'Bot is acting — watch the field.';
+  })();
+
   const mapMeta = getMapById(state.mapId);
   const mapDetails = mapMeta.description ? ` • ${mapMeta.name}: ${mapMeta.description}` : '';
   hintText.textContent = `${baseHint}${mapDetails}`;
 }
 
 function updateUnitList(container: HTMLUListElement, state: GameState, team: TeamId, activeId: string | null) {
-  container.replaceChildren(...state.units
+  const entries = state.units
     .filter((unit) => unit.team === team)
     .map((unit) => {
       const li = document.createElement('li');
-      li.textContent = `${unit.def.name}: ${Math.max(0, Math.round(unit.hp))} HP`;
-      li.className = unit.alive ? 'unit alive' : 'unit dead';
+      li.className = `unit ${unit.alive ? 'alive' : 'dead'} team-${team}`;
       if (unit.id === activeId && state.activeTeam === team && state.phase !== 'ended') {
         li.classList.add('active');
       }
+
+      const name = document.createElement('span');
+      name.className = 'unit-name';
+      name.textContent = unit.def.name;
+
+      const hp = document.createElement('span');
+      hp.className = 'unit-hp';
+      hp.textContent = `${Math.max(0, Math.round(unit.hp))} HP`;
+
+      const bar = document.createElement('div');
+      bar.className = 'unit-hp-bar';
+      const fill = document.createElement('div');
+      fill.className = 'unit-hp-fill';
+      fill.style.width = `${Math.max(0, Math.min(1, unit.hp / unit.def.maxHp)) * 100}%`;
+      bar.append(fill);
+
+      li.append(name, hp, bar);
       return li;
-    }));
+    });
+
+  container.replaceChildren(...entries);
 }
 
 function getActiveUnit(state: GameState): UnitState | null {
@@ -182,3 +243,15 @@ function getActiveUnit(state: GameState): UnitState | null {
 
 // make sure restart button is always visible status
 restartButton.hidden = false;
+
+function setActiveModeButton(mode: GameMode): void {
+  modeButtons.forEach((button) => {
+    if (button.dataset.mode === mode) {
+      button.classList.add('active');
+    } else {
+      button.classList.remove('active');
+    }
+  });
+}
+
+setActiveModeButton(currentMode);

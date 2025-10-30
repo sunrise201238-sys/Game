@@ -10,6 +10,10 @@
     <div id="app">
       <header>
         <h1>Slingshot Skirmish</h1>
+        <div class="mode-toggle" role="group" aria-label="Game mode">
+          <button type="button" data-mode="bot">VS Bot</button>
+          <button type="button" data-mode="hotseat">Hotseat</button>
+        </div>
         <div class="map-picker">
           <label for="map-select">Map</label>
           <select id="map-select" aria-label="Choose battlefield"></select>
@@ -32,11 +36,11 @@
         </section>
         <section id="team-panels">
           <div class="team-card" aria-label="Your squad">
-            <h2>Your Squad</h2>
+            <h2 id="team-a-label">Your Squad</h2>
             <ul id="player-units"></ul>
           </div>
           <div class="team-card" aria-label="Bot squad">
-            <h2>Bot Squad</h2>
+            <h2 id="team-b-label">Bot Squad</h2>
             <ul id="bot-units"></ul>
           </div>
         </section>

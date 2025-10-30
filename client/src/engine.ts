@@ -7,6 +7,7 @@ import type {
   SimulationResult,
   SimulationFrameProjectile,
   SimulationFrameZone,
+  GameMode,
   TeamId,
   TurnOrderState,
   UnitDefinition,
@@ -58,21 +59,31 @@ export class GameEngine {
   private zoneCounter = 0;
   private map: MapDefinition;
   private readonly loadout: string[];
+  private mode: GameMode;
 
-  constructor(listeners: EngineListeners, map: MapDefinition, loadout: string[] = TEAM_LOADOUT) {
+  constructor(
+    listeners: EngineListeners,
+    map: MapDefinition,
+    loadout: string[] = TEAM_LOADOUT,
+    mode: GameMode = 'bot'
+  ) {
     this.listeners = listeners;
     this.map = structuredClone(map);
     this.loadout = [...loadout];
+    this.mode = mode;
     this.state = this.createInitialState();
   }
 
-  startNewGame(map?: MapDefinition): void {
+  startNewGame(map?: MapDefinition, mode?: GameMode): void {
     if (this.pendingBotTimeout) {
       window.clearTimeout(this.pendingBotTimeout);
       this.pendingBotTimeout = null;
     }
     this.projectileCounter = 0;
     this.zoneCounter = 0;
+    if (mode) {
+      this.mode = mode;
+    }
     if (map) {
       this.map = structuredClone(map);
     }
@@ -89,14 +100,24 @@ export class GameEngine {
   }
 
   canPlayerAct(): boolean {
-    return this.state.phase === 'aim' && this.state.activeTeam === PLAYER_TEAM && !this.state.winner;
+    if (this.state.phase !== 'aim' || this.state.winner) {
+      return false;
+    }
+    if (this.mode === 'hotseat') {
+      return true;
+    }
+    return this.state.activeTeam === PLAYER_TEAM;
   }
 
   beginPlayerAction(actionVector: Vector): void {
     if (!this.canPlayerAct()) return;
+    const actingTeam = this.state.activeTeam;
+    if (this.mode === 'bot' && actingTeam !== PLAYER_TEAM) {
+      return;
+    }
     const unit = this.getActiveUnit();
     if (!unit) {
-      this.handleWin(BOT_TEAM);
+      this.handleWin(actingTeam === PLAYER_TEAM ? BOT_TEAM : PLAYER_TEAM);
       return;
     }
     const drag = clampMagnitude(actionVector, unit.def.maxPower);
@@ -106,10 +127,11 @@ export class GameEngine {
       power,
       vector: drag,
     };
-    this.executeAction(action, PLAYER_TEAM);
+    this.executeAction(action, actingTeam);
   }
 
   private scheduleBot(): void {
+    if (this.mode !== 'bot') return;
     if (this.state.phase !== 'bot-planning' || this.state.winner) return;
     if (this.pendingBotTimeout) {
       window.clearTimeout(this.pendingBotTimeout);
@@ -189,13 +211,13 @@ export class GameEngine {
       return;
     }
 
-    if (this.state.activeTeam === PLAYER_TEAM) {
-      this.state.phase = 'aim';
-      this.emitState();
-    } else {
+    if (this.mode === 'bot' && this.state.activeTeam === BOT_TEAM) {
       this.state.phase = 'bot-planning';
       this.emitState();
       this.scheduleBot();
+    } else {
+      this.state.phase = 'aim';
+      this.emitState();
     }
   }
 
@@ -888,6 +910,7 @@ export class GameEngine {
   }
 
   private emitState(): void {
+    this.state.mode = this.mode;
     this.listeners.onState(this.getSnapshot());
   }
 
@@ -963,6 +986,7 @@ export class GameEngine {
       activeProjectiles: [],
       activeZones: [],
       mapId: map.id,
+      mode: this.mode,
     };
 
     return state;

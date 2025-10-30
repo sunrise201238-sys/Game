@@ -42,11 +42,14 @@ npm run dev --workspace client
 
 ## Gameplay Overview
 
-- **Turn order:** You act first. Teams alternate strictly (You → Bot → You → Bot …). Each team cycles through its fixed queue of minions; dead minions simply get skipped.
-- **Controls:** Click/touch your highlighted minion, drag away from the direction you want it to travel, then release. The shot fires immediately and animates until all motion resolves.
-- **Physics:** Units travel in a top-down arena with friction, walls, and a central lake. Colliding with enemies inflicts damage and knockback; allies only nudge. Ending a move in the lake (or outside bounds) destroys the unit and leaves a grave marker.
-- **Bot:** The bot waits for your turn to finish, then selects the closest target and launches one of its remaining minions. There are no turn timers in this mode.
-- **Restart:** The “Start New Game” button is always visible so you can instantly reset the board.
+- **Modes:** Choose between **VS Bot** (default) and **Hotseat**. In hotseat, Team One and Team Two alternate shots on the same device; in bot mode the AI handles Team Two.
+- **Turn order:** A coin flip is implicit in the first round—the local player (or Team One) opens. Teams alternate strictly (Team One → Team Two → …) and each team cycles through its fixed queue of seven minions; fallen units are skipped but turns are never lost.
+- **Controls & aiming:** Click/touch the highlighted minion, drag away from your intended direction, and release. A colored guide shows travel direction and, for mages, the projected area-of-effect landing zone before you let go.
+- **Roster:** Each side fields three Soldiers, three Archers, and a Mage. Soldiers brawl, Archers fire piercing projectiles, and Mages drop softened AOEs with dramatically reduced damage for balance.
+- **Maps:** Pick from five arenas—including the new **Twin Bridge** canal map—each with mirrored spawn templates, walls, and optional hazards. A pure Training Grounds layout is available for fundamentals.
+- **Physics:** Everything plays out in a top-down space with friction, ricocheting walls, friendly shoves, enemy knockback, and instant defeats for units that finish inside lakes or off the board. Graves mark fallen units without blocking movement.
+- **Bot:** The AI samples multiple launch vectors with the shared simulator, scoring each candidate to push enemies into hazards or finish weakened targets. There are no timers; the bot waits for animations to settle before acting.
+- **HUD:** Squad panels show per-unit health bars, active-unit highlights, and persistent restart/map/mode controls so you can reset or swap configurations at any time.
 
 ## Render Deployment
 

@@ -38,6 +38,37 @@ header h1 {
   text-transform: uppercase;
 }
 
+.mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(255, 255, 255, 0.07);
+  padding: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.mode-toggle button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  background: transparent;
+  color: inherit;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.mode-toggle button.active,
+.mode-toggle button:hover,
+.mode-toggle button:focus-visible {
+  background: linear-gradient(135deg, rgba(83, 225, 255, 0.95), rgba(255, 111, 145, 0.95));
+  color: #0b132b;
+  box-shadow: 0 4px 16px rgba(83, 225, 255, 0.35);
+  outline: none;
+}
+
 .map-picker {
   display: flex;
   flex-direction: column;
@@ -179,12 +210,20 @@ main {
 .team-card li {
   background: rgba(255, 255, 255, 0.06);
   border-radius: 10px;
-  padding: 0.4rem 0.6rem;
+  padding: 0.45rem 0.6rem 0.65rem;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.9rem;
-  transition: transform 0.15s ease;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.88rem;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.team-card li.team-0 {
+  border-left: 3px solid rgba(74, 222, 128, 0.65);
+}
+
+.team-card li.team-1 {
+  border-left: 3px solid rgba(249, 115, 22, 0.65);
 }
 
 .team-card li.active {
@@ -195,6 +234,38 @@ main {
 .team-card li.dead {
   opacity: 0.45;
   text-decoration: line-through;
+}
+
+.unit-name,
+.unit-hp {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.86rem;
+}
+
+.unit-name {
+  font-weight: 600;
+}
+
+.unit-hp {
+  opacity: 0.8;
+}
+
+.unit-hp-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.unit-hp-fill {
+  height: 100%;
+  background: linear-gradient(135deg, #4ade80, #22d3ee);
+  border-radius: 999px;
+  transition: width 0.25s ease;
 }
 
 footer {

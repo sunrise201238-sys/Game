@@ -1,4 +1,5 @@
 export type TeamId = 0 | 1;
+export type GameMode = 'bot' | 'hotseat';
 
 export interface Vector {
   x: number;
@@ -112,6 +113,7 @@ export interface GameState {
   activeProjectiles: SimulationFrameProjectile[];
   activeZones: SimulationFrameZone[];
   mapId: string;
+  mode: GameMode;
 }
 
 export interface SimulationFrameUnit {
