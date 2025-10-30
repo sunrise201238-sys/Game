@@ -336,9 +336,8 @@ export class GameStateManager {
         { you: 0, opponent: 0 },
         this.roundSeed || 'seed-resync',
       );
-    } else {
-      updateRuntimeFromSnapshot(this.runtime, snapshot);
     }
+    updateRuntimeFromSnapshot(this.runtime, snapshot);
     this.previewState = null;
     this.previewRound = null;
     this.previewMode = 'none';
@@ -553,6 +552,43 @@ function applyDiffToRuntime(runtime: MatchRuntimeState, diff: RoundDiff) {
       }
     }
   }
+  if (diff.aoeExpires?.length) {
+    const expired = new Set(diff.aoeExpires);
+    runtime.aoeZones = runtime.aoeZones.filter((zone) => !expired.has(zone.id));
+  }
+  if (diff.aoeUpserts?.length) {
+    const pending = new Map(diff.aoeUpserts.map((zone) => [zone.id, zone]));
+    runtime.aoeZones = runtime.aoeZones.map((zone) => {
+      const incoming = pending.get(zone.id);
+      if (incoming) {
+        zone.ttl = incoming.ttl;
+        zone.position = { ...incoming.position };
+        zone.radius = incoming.radius;
+        zone.owner = incoming.owner;
+        pending.delete(zone.id);
+      }
+      return zone;
+    });
+    for (const incoming of pending.values()) {
+      const dot = inferZoneDot(runtime, incoming.owner);
+      runtime.aoeZones.push({
+        id: incoming.id,
+        ttl: incoming.ttl,
+        position: { ...incoming.position },
+        radius: incoming.radius,
+        owner: incoming.owner,
+        dot,
+      });
+    }
+  }
+  if (diff.graves?.length) {
+    runtime.graveTally = new Map(
+      diff.graves.map((grave) => [
+        `${grave.position.x.toFixed(2)}:${grave.position.y.toFixed(2)}`,
+        { position: { ...grave.position }, count: grave.count },
+      ]),
+    );
+  }
 }
 
 function updateRuntimeFromSnapshot(runtime: MatchRuntimeState, snapshot: MinimalSnapshot) {
@@ -568,4 +604,31 @@ function updateRuntimeFromSnapshot(runtime: MatchRuntimeState, snapshot: Minimal
       }
     }
   }
+  const zones = Array.isArray((snapshot as { aoeZones?: unknown }).aoeZones)
+    ? ((snapshot as { aoeZones: Array<{ id: string; ttl: number; position: { x: number; y: number }; radius: number; owner: PlayerRole; dot?: { dmg?: number; duration?: number; refresh?: boolean; stack?: boolean } }> }).aoeZones)
+    : [];
+  runtime.aoeZones = zones.map((zone) => ({
+    id: zone.id,
+    ttl: zone.ttl,
+    position: { ...zone.position },
+    radius: zone.radius,
+    owner: zone.owner,
+    dot: zone.dot ? { ...zone.dot } : inferZoneDot(runtime, zone.owner),
+  }));
+}
+
+function inferZoneDot(runtime: MatchRuntimeState, owner: PlayerRole) {
+  const team = runtime.teams[owner];
+  for (const unit of team.units) {
+    const spec = UNITS_BY_ID[unit.type]?.aoe;
+    if (spec) {
+      return {
+        dmg: spec.dot.dmg,
+        duration: spec.dot.durationRounds,
+        refresh: spec.dot.refresh,
+        stack: spec.dot.stack,
+      };
+    }
+  }
+  return undefined;
 }

@@ -7,7 +7,7 @@
     "shared"
   ],
   "scripts": {
-    "bootstrap": "npm ci --workspaces || npm install --workspaces",
+    "bootstrap": "npm install --workspaces --no-audit --no-fund",
     "build": "npm run build --workspace shared && npm run build --workspace server && npm run build --workspace client",
     "start": "npm run start --workspace server",
     "start:server": "npm run start --workspace server",

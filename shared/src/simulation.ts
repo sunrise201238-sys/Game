@@ -703,28 +703,32 @@ function addOrRefreshZone(state: MatchRuntimeState, zone: RuntimeAoe, diff: Roun
 
 function applyAoeEffects(state: MatchRuntimeState, diff: RoundDiff) {
   for (const zone of state.aoeZones) {
+    const dot = zone.dot;
+    if (!dot) {
+      continue;
+    }
     for (const role of ['you', 'opponent'] as PlayerRole[]) {
       for (const unit of state.teams[role].units) {
         if (!unit.alive) continue;
         if (distanceSq(unit.position, zone.position) <= zone.radius * zone.radius) {
           const existing = unit.statuses.find((status) => status.id === zone.id);
-          if (existing && zone.dot.refresh) {
-            existing.remaining = Math.max(existing.remaining, zone.dot.duration);
-            existing.dmg = zone.dot.dmg;
+          if (existing && dot.refresh) {
+            existing.remaining = Math.max(existing.remaining, dot.duration ?? existing.remaining);
+            existing.dmg = dot.dmg ?? existing.dmg;
           }
           if (!existing) {
             unit.statuses.push({
               id: zone.id,
               owner: zone.owner,
-              remaining: zone.dot.duration,
-              dmg: zone.dot.dmg,
+              remaining: dot.duration ?? 0,
+              dmg: dot.dmg ?? 0,
             });
-          } else if (zone.dot.stack) {
+          } else if (dot.stack) {
             unit.statuses.push({
               id: `${zone.id}-${unit.statuses.length}`,
               owner: zone.owner,
-              remaining: zone.dot.duration,
-              dmg: zone.dot.dmg,
+              remaining: dot.duration ?? 0,
+              dmg: dot.dmg ?? 0,
             });
           }
         }

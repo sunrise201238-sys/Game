@@ -36,7 +36,7 @@ npm i -g npm@10
 
 ## Installing Dependencies
 
-> **Note:** The repository ships with a root `.npmrc` that pins the public npm registry and disables funding/audit prompts. `npm run bootstrap` attempts `npm ci --workspaces` first and automatically falls back to `npm install --workspaces` when the lock file drifts, so you are never blocked by the "package.json and package-lock.json are out of sync" error.
+> **Note:** The repository ships with a root `.npmrc` that pins the public npm registry and disables funding/audit prompts. `npm run bootstrap` simply runs `npm install --workspaces` under the hood so installs succeed even when the checked-in lockfile drifts.
 
 ```bash
 npm run bootstrap
