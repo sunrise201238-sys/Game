@@ -11,7 +11,7 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
     knockback: 320,
     recoil: 110,
     resistance: 0.7,
-    maxPower: 260,
+    maxPower: 340,
   },
   {
     id: 'archer',
@@ -23,7 +23,15 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
     knockback: 260,
     recoil: 90,
     resistance: 0.55,
-    maxPower: 240,
+    maxPower: 280,
+    projectile: {
+      speed: 680,
+      radius: 6,
+      maxDistance: 520,
+      damage: 32,
+      knockback: 140,
+      color: '#7ec8e3',
+    },
   },
   {
     id: 'mage',
@@ -35,7 +43,16 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
     knockback: 220,
     recoil: 100,
     resistance: 0.5,
-    maxPower: 230,
+    maxPower: 270,
+    aoe: {
+      radius: 80,
+      duration: 4,
+      dotDamage: 18,
+      dotDuration: 3,
+      placementRange: 240,
+      travelScale: 1.1,
+      color: 'rgba(255,140,0,0.45)',
+    },
   },
 ];
 
@@ -65,10 +82,10 @@ export const BOT_SPAWNS: Vector[] = [
 
 export const GAME_CONSTANTS = {
   timeStep: 1 / 60,
-  maxSimulationSeconds: 2.8,
-  friction: 0.92,
-  minVelocity: 12,
-  dragPowerScale: 1.2,
+  maxSimulationSeconds: 3.6,
+  friction: 0.94,
+  minVelocity: 10,
+  dragPowerScale: 1.55,
   wallBounce: 0.55,
 };
 

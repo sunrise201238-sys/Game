@@ -1,6 +1,14 @@
 import { HP_BAR_HEIGHT, MAP_DEFINITION } from './config';
 import { normalize, scale } from './math';
-import type { GameState, GraveMarker, MapDefinition, UnitState, Vector } from './types';
+import type {
+  GameState,
+  GraveMarker,
+  MapDefinition,
+  SimulationFrameProjectile,
+  SimulationFrameZone,
+  UnitState,
+  Vector,
+} from './types';
 
 interface RenderOptions {
   dragOrigin?: Vector | null;
@@ -43,8 +51,10 @@ export class Renderer {
     this.drawArena();
     this.drawLakes();
     this.drawWalls();
+    this.drawZones(state.activeZones);
     this.drawGraves(state.graves);
     this.drawUnits(state.units, state.activeTeam);
+    this.drawProjectiles(state.activeProjectiles);
     this.drawDragIndicator(state, options);
     this.drawStatus(state);
   }
@@ -92,6 +102,23 @@ export class Renderer {
     }
   }
 
+  private drawZones(zones: SimulationFrameZone[]): void {
+    const { ctx } = this;
+    for (const zone of zones) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, Math.max(0.2, zone.strength));
+      const gradient = ctx.createRadialGradient(zone.x, zone.y, zone.radius * 0.15, zone.x, zone.y, zone.radius);
+      gradient.addColorStop(0, this.replaceAlpha(zone.color, Math.min(0.85, 0.6 + zone.strength * 0.4)));
+      gradient.addColorStop(1, this.replaceAlpha(zone.color, 0));
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   private drawUnits(units: UnitState[], activeTeam: number): void {
     const { ctx } = this;
     ctx.lineWidth = 3;
@@ -108,6 +135,18 @@ export class Renderer {
       if (unit.alive) {
         this.drawHpBar(unit);
       }
+    }
+  }
+
+  private drawProjectiles(projectiles: SimulationFrameProjectile[]): void {
+    const { ctx } = this;
+    for (const projectile of projectiles) {
+      ctx.save();
+      ctx.fillStyle = projectile.color;
+      ctx.beginPath();
+      ctx.arc(projectile.x, projectile.y, projectile.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
   }
 
@@ -205,6 +244,25 @@ export class Renderer {
   private hexToRgba(hex: string, alpha: number): string {
     const sanitized = hex.replace('#', '');
     const bigint = parseInt(sanitized, 16);
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  private replaceAlpha(color: string, alpha: number): string {
+    if (color.startsWith('rgba')) {
+      const parts = color.replace(/rgba?\(|\)|\s/g, '').split(',');
+      const [r, g, b] = parts;
+      return `rgba(${r},${g},${b},${alpha})`;
+    }
+    if (color.startsWith('rgb')) {
+      const parts = color.replace(/rgb?\(|\)|\s/g, '').split(',');
+      const [r, g, b] = parts;
+      return `rgba(${r},${g},${b},${alpha})`;
+    }
+    const hex = color.replace('#', '');
+    const bigint = parseInt(hex, 16);
     const r = (bigint >> 16) & 255;
     const g = (bigint >> 8) & 255;
     const b = bigint & 255;

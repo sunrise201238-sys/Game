@@ -5,6 +5,25 @@ export interface Vector {
   y: number;
 }
 
+export interface ProjectileSpec {
+  speed: number;
+  radius: number;
+  maxDistance: number;
+  damage: number;
+  knockback: number;
+  color: string;
+}
+
+export interface AoeSpec {
+  radius: number;
+  duration: number;
+  dotDamage: number;
+  dotDuration: number;
+  placementRange: number;
+  travelScale: number;
+  color: string;
+}
+
 export interface UnitDefinition {
   id: string;
   name: string;
@@ -16,6 +35,8 @@ export interface UnitDefinition {
   recoil: number;
   resistance: number;
   maxPower: number;
+  projectile?: ProjectileSpec;
+  aoe?: AoeSpec;
 }
 
 export interface UnitState {
@@ -55,6 +76,24 @@ export interface TurnOrderState {
   queue: string[];
 }
 
+export interface ZoneState {
+  id: string;
+  center: Vector;
+  radius: number;
+  ownerTeam: TeamId;
+  remainingTurns: number;
+  maxTurns: number;
+  dotDamage: number;
+  dotDuration: number;
+  color: string;
+}
+
+export interface StatusEffect {
+  unitId: string;
+  remainingTurns: number;
+  damagePerTurn: number;
+}
+
 export interface GameState {
   units: UnitState[];
   graves: GraveMarker[];
@@ -63,6 +102,10 @@ export interface GameState {
   phase: GamePhase;
   winner: TeamId | 'draw' | null;
   orders: Record<TeamId, TurnOrderState>;
+  zones: ZoneState[];
+  statuses: StatusEffect[];
+  activeProjectiles: SimulationFrameProjectile[];
+  activeZones: SimulationFrameZone[];
 }
 
 export interface SimulationFrameUnit {
@@ -73,14 +116,35 @@ export interface SimulationFrameUnit {
   alive: boolean;
 }
 
+export interface SimulationFrameProjectile {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  color: string;
+}
+
+export interface SimulationFrameZone {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  strength: number;
+  color: string;
+}
+
 export interface SimulationFrame {
   units: SimulationFrameUnit[];
+  projectiles: SimulationFrameProjectile[];
+  zones: SimulationFrameZone[];
 }
 
 export interface SimulationResult {
   frames: SimulationFrame[];
   finalUnits: UnitState[];
   deaths: string[];
+  zonesToAdd: ZoneState[];
+  inflictedStatuses: StatusEffect[];
 }
 
 export interface DragAction {

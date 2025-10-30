@@ -4,13 +4,16 @@ import type {
   DragAction,
   GameState,
   SimulationFrame,
-  SimulationFrameUnit,
   SimulationResult,
+  SimulationFrameProjectile,
+  SimulationFrameZone,
   TeamId,
   TurnOrderState,
   UnitDefinition,
   UnitState,
   Vector,
+  ZoneState,
+  StatusEffect,
 } from './types';
 import { MAP_DEFINITION as MAP } from './config';
 
@@ -26,10 +29,26 @@ interface UnitClone extends UnitState {
   velocity: Vector;
 }
 
+interface ProjectileState {
+  id: string;
+  position: Vector;
+  velocity: Vector;
+  remainingDistance: number;
+  radius: number;
+  damage: number;
+  knockback: number;
+  ownerTeam: TeamId;
+  color: string;
+}
+
+type ZoneClone = ZoneState;
+
 export class GameEngine {
   private state: GameState;
   private listeners: EngineListeners;
   private pendingBotTimeout: number | null = null;
+  private projectileCounter = 0;
+  private zoneCounter = 0;
 
   constructor(listeners: EngineListeners) {
     this.listeners = listeners;
@@ -41,6 +60,8 @@ export class GameEngine {
       window.clearTimeout(this.pendingBotTimeout);
       this.pendingBotTimeout = null;
     }
+    this.projectileCounter = 0;
+    this.zoneCounter = 0;
     this.state = this.createInitialState();
     this.emitState();
   }
@@ -119,11 +140,25 @@ export class GameEngine {
   private finalize(result: SimulationResult, actingTeam: TeamId): void {
     this.applyFinalUnits(result.finalUnits);
     this.registerDeaths(result.deaths);
+    this.addZones(result.zonesToAdd);
+    this.applyStatusInflictions(result.inflictedStatuses);
 
     const actedOrder = this.state.orders[actingTeam];
     actedOrder.nextIndex = (actedOrder.nextIndex + 1) % actedOrder.queue.length;
 
+    if (actingTeam === BOT_TEAM) {
+      this.reduceZoneDurationsAfterRound();
+    }
+    this.cleanupExpiredZones();
+
     const otherTeam: TeamId = actingTeam === PLAYER_TEAM ? BOT_TEAM : PLAYER_TEAM;
+    this.state.activeTeam = otherTeam;
+
+    if (this.state.activeTeam === PLAYER_TEAM) {
+      this.state.round += 1;
+    }
+
+    this.applyTurnStartEffects(this.state.activeTeam);
 
     const otherAlive = this.hasAliveUnits(otherTeam);
     const actingAlive = this.hasAliveUnits(actingTeam);
@@ -140,10 +175,8 @@ export class GameEngine {
       return;
     }
 
-    this.state.activeTeam = otherTeam;
     if (this.state.activeTeam === PLAYER_TEAM) {
       this.state.phase = 'aim';
-      this.state.round += 1;
       this.emitState();
     } else {
       this.state.phase = 'bot-planning';
@@ -153,6 +186,8 @@ export class GameEngine {
   }
 
   private applyFrame(frame: SimulationFrame): void {
+    this.state.activeProjectiles = frame.projectiles;
+    this.state.activeZones = frame.zones;
     for (const unitFrame of frame.units) {
       const unit = this.state.units.find((u) => u.id === unitFrame.id);
       if (!unit) continue;
@@ -164,6 +199,8 @@ export class GameEngine {
   }
 
   private applyFinalUnits(finalUnits: UnitState[]): void {
+    this.state.activeProjectiles = [];
+    this.refreshPersistentZoneVisuals();
     for (const finalUnit of finalUnits) {
       const unit = this.state.units.find((u) => u.id === finalUnit.id);
       if (!unit) continue;
@@ -191,6 +228,9 @@ export class GameEngine {
         });
       }
     }
+    if (deaths.length) {
+      this.state.statuses = this.state.statuses.filter((status) => !deaths.includes(status.unitId));
+    }
   }
 
   private simulateAction(action: DragAction): SimulationResult {
@@ -199,10 +239,20 @@ export class GameEngine {
       velocity: { x: 0, y: 0 },
     }));
 
+    const existingZones: ZoneClone[] = this.state.zones.map((zone) => structuredClone(zone));
+    const zoneClones: ZoneClone[] = [...existingZones];
     const frameList: SimulationFrame[] = [];
+    const inflictedStatuses = new Map<string, StatusEffect>();
+
     const attacker = clones.find((u) => u.id === action.unitId);
     if (!attacker) {
-      return { frames: [], finalUnits: this.cloneFinalUnits(clones), deaths: [] };
+      return {
+        frames: [],
+        finalUnits: this.cloneFinalUnits(clones),
+        deaths: [],
+        zonesToAdd: [],
+        inflictedStatuses: [],
+      };
     }
 
     const launchDir = normalize(action.vector);
@@ -210,20 +260,138 @@ export class GameEngine {
     attacker.velocity = scale(launchDir, launchSpeed);
 
     const activeVelocities = new Map<string, Vector>();
-    activeVelocities.set(attacker.id, { ...attacker.velocity });
-    const damaged = new Set<string>();
+    if (launchSpeed > 0) {
+      activeVelocities.set(attacker.id, { ...attacker.velocity });
+    }
 
-    const maxSteps = Math.floor((GAME_CONSTANTS.maxSimulationSeconds / GAME_CONSTANTS.timeStep));
+    const projectiles: ProjectileState[] = [];
+    if (attacker.def.projectile && launchSpeed > 0) {
+      const spec = attacker.def.projectile;
+      const projectile: ProjectileState = {
+        id: `proj-${this.projectileCounter++}`,
+        position: { ...attacker.position },
+        velocity: scale(launchDir, spec.speed),
+        remainingDistance: spec.maxDistance,
+        radius: spec.radius,
+        damage: spec.damage,
+        knockback: spec.knockback,
+        ownerTeam: attacker.team,
+        color: spec.color,
+      };
+      projectiles.push(projectile);
+    }
+
+    const newZones: ZoneState[] = [];
+    if (attacker.def.aoe && launchSpeed > 0) {
+      const spec = attacker.def.aoe;
+      const placementDistance = Math.min(spec.placementRange, action.power * spec.travelScale);
+      const desiredCenter = add(attacker.position, scale(launchDir, placementDistance));
+      const center = {
+        x: Math.min(MAP.width - spec.radius, Math.max(spec.radius, desiredCenter.x)),
+        y: Math.min(MAP.height - spec.radius, Math.max(spec.radius, desiredCenter.y)),
+      };
+      const zone: ZoneState = {
+        id: `zone-${this.zoneCounter++}`,
+        center,
+        radius: spec.radius,
+        ownerTeam: attacker.team,
+        remainingTurns: spec.duration,
+        maxTurns: spec.duration,
+        dotDamage: spec.dotDamage,
+        dotDuration: spec.dotDuration,
+        color: spec.color,
+      };
+      newZones.push(zone);
+      zoneClones.push(zone);
+    }
+
+    const processedZoneHits = new Set<string>();
+    const damagedUnits = new Set<string>();
+
+    const registerZoneContact = (unit: UnitClone, zone: ZoneClone) => {
+      if (!unit.alive || unit.team === zone.ownerTeam) return;
+      const key = `${zone.id}:${unit.id}`;
+      if (processedZoneHits.has(key)) return;
+      processedZoneHits.add(key);
+      unit.hp = Math.max(0, unit.hp - zone.dotDamage);
+      if (unit.hp === 0) {
+        unit.alive = false;
+      }
+      const existing = inflictedStatuses.get(unit.id);
+      if (!existing || existing.damagePerTurn <= zone.dotDamage) {
+        inflictedStatuses.set(unit.id, {
+          unitId: unit.id,
+          remainingTurns: zone.dotDuration,
+          damagePerTurn: zone.dotDamage,
+        });
+      }
+    };
+
+    const checkZoneContacts = () => {
+      for (const zone of zoneClones) {
+        for (const clone of clones) {
+          if (!clone.alive || clone.team === zone.ownerTeam) continue;
+          const dist = distance(clone.position, zone.center);
+          if (dist <= zone.radius + clone.def.radius * 0.5) {
+            registerZoneContact(clone, zone);
+          }
+        }
+      }
+    };
+
+    checkZoneContacts();
+
+    const maxSteps = Math.floor(GAME_CONSTANTS.maxSimulationSeconds / GAME_CONSTANTS.timeStep);
 
     for (let step = 0; step < maxSteps; step += 1) {
-      // update movement for all tracked units
       for (const clone of clones) {
         const currentVel = activeVelocities.get(clone.id);
         if (!currentVel) continue;
         clone.position = add(clone.position, scale(currentVel, GAME_CONSTANTS.timeStep));
       }
 
-      // boundary handling
+      for (let i = projectiles.length - 1; i >= 0; i -= 1) {
+        const projectile = projectiles[i];
+        const stepVector = scale(projectile.velocity, GAME_CONSTANTS.timeStep);
+        projectile.position = add(projectile.position, stepVector);
+        projectile.remainingDistance -= length(stepVector);
+
+        let remove = projectile.remainingDistance <= 0 ||
+          !this.pointInsideCircleBounds(projectile.position, projectile.radius);
+
+        if (!remove) {
+          for (const wall of MAP.walls) {
+            if (this.pointInRect(projectile.position, wall)) {
+              remove = true;
+              break;
+            }
+          }
+        }
+
+        if (!remove) {
+          for (const clone of clones) {
+            if (!clone.alive || clone.team === projectile.ownerTeam) continue;
+            const dist = distance(projectile.position, clone.position);
+            if (dist <= projectile.radius + clone.def.radius) {
+              clone.hp = Math.max(0, clone.hp - projectile.damage);
+              if (clone.hp === 0) {
+                clone.alive = false;
+              }
+              const knockDir = normalize(subtract(clone.position, projectile.position));
+              const knockVec = scale(knockDir, projectile.knockback * (1 - clone.def.resistance));
+              const current = activeVelocities.get(clone.id) ?? { x: 0, y: 0 };
+              activeVelocities.set(clone.id, add(current, knockVec));
+              remove = true;
+              break;
+            }
+          }
+        }
+
+        if (remove) {
+          projectiles.splice(i, 1);
+        }
+      }
+
       for (const clone of clones) {
         const currentVel = activeVelocities.get(clone.id);
         if (!currentVel) continue;
@@ -246,7 +414,6 @@ export class GameEngine {
         }
       }
 
-      // collisions
       for (const clone of clones) {
         const currentVel = activeVelocities.get(clone.id);
         const moving = Boolean(currentVel);
@@ -267,18 +434,15 @@ export class GameEngine {
             activeVelocities.set(clone.id, newVelA);
             activeVelocities.set(other.id, newVelB);
           } else if (moving) {
-            if (!damaged.has(other.id)) {
+            if (!damagedUnits.has(other.id)) {
               other.hp = Math.max(0, other.hp - clone.def.collideDamage);
               if (other.hp === 0) {
                 other.alive = false;
               }
-              damaged.add(other.id);
+              damagedUnits.add(other.id);
             }
             const knockScale = clone.def.knockback * (1 - other.def.resistance);
-            const targetVel = add(
-              activeVelocities.get(other.id) ?? { x: 0, y: 0 },
-              scale(dir, knockScale)
-            );
+            const targetVel = add(activeVelocities.get(other.id) ?? { x: 0, y: 0 }, scale(dir, knockScale));
             activeVelocities.set(other.id, targetVel);
             const recoilVec = add(activeVelocities.get(clone.id) ?? { x: 0, y: 0 }, scale(dir, -clone.def.recoil));
             activeVelocities.set(clone.id, recoilVec);
@@ -286,13 +450,11 @@ export class GameEngine {
         }
       }
 
-      // apply walls (obstacles)
       for (const wall of MAP.walls) {
         for (const clone of clones) {
           const currentVel = activeVelocities.get(clone.id);
           if (!currentVel) continue;
           if (this.pointInRect(clone.position, wall)) {
-            // push out along smallest axis
             const leftPen = Math.abs(clone.position.x - wall.x);
             const rightPen = Math.abs(clone.position.x - (wall.x + wall.width));
             const topPen = Math.abs(clone.position.y - wall.y);
@@ -315,7 +477,8 @@ export class GameEngine {
         }
       }
 
-      // apply friction
+      checkZoneContacts();
+
       for (const [id, vel] of Array.from(activeVelocities.entries())) {
         const slowed = scale(vel, GAME_CONSTANTS.friction);
         if (length(slowed) < GAME_CONSTANTS.minVelocity) {
@@ -325,9 +488,13 @@ export class GameEngine {
         }
       }
 
-      frameList.push(this.createFrameSnapshot(clones));
-      if (activeVelocities.size === 0) break;
+      frameList.push(this.createFrameSnapshot(clones, projectiles, zoneClones));
+      if (activeVelocities.size === 0 && projectiles.length === 0) {
+        break;
+      }
     }
+
+    checkZoneContacts();
 
     const deaths: string[] = [];
     for (const clone of clones) {
@@ -345,21 +512,24 @@ export class GameEngine {
         deaths.push(clone.id);
         continue;
       }
-      for (const lake of MAP.lakes) {
-        if (this.pointInRect(clone.position, lake)) {
-          clone.alive = false;
-          deaths.push(clone.id);
-          break;
-        }
+      if (this.isInHazard(clone.position)) {
+        clone.alive = false;
+        deaths.push(clone.id);
       }
     }
 
-    frameList.push(this.createFrameSnapshot(clones));
+    for (const clone of clones) {
+      clone.velocity = { x: 0, y: 0 };
+    }
+
+    frameList.push(this.createFrameSnapshot(clones, projectiles, zoneClones));
 
     return {
       frames: frameList,
       finalUnits: this.cloneFinalUnits(clones),
       deaths,
+      zonesToAdd: newZones,
+      inflictedStatuses: Array.from(inflictedStatuses.values()),
     };
   }
 
@@ -375,15 +545,111 @@ export class GameEngine {
     }));
   }
 
-  private createFrameSnapshot(clones: UnitClone[]): SimulationFrame {
-    const units: SimulationFrameUnit[] = clones.map((clone) => ({
+  private createFrameSnapshot(
+    clones: UnitClone[],
+    projectiles: ProjectileState[],
+    zones: ZoneClone[],
+  ): SimulationFrame {
+    const units = clones.map((clone) => ({
       id: clone.id,
       x: clone.position.x,
       y: clone.position.y,
       hp: Math.max(0, clone.hp),
       alive: clone.alive && clone.hp > 0,
     }));
-    return { units };
+    const projectileFrames: SimulationFrameProjectile[] = projectiles.map((projectile) => ({
+      id: projectile.id,
+      x: projectile.position.x,
+      y: projectile.position.y,
+      radius: projectile.radius,
+      color: projectile.color,
+    }));
+    const zoneFrames: SimulationFrameZone[] = zones.map((zone) => this.zoneToFrame(zone));
+    return { units, projectiles: projectileFrames, zones: zoneFrames };
+  }
+
+  private refreshPersistentZoneVisuals(): void {
+    this.state.activeZones = this.state.zones.map((zone) => this.zoneToFrame(zone));
+  }
+
+  private zoneToFrame(zone: ZoneState): SimulationFrameZone {
+    const intensityBase = zone.maxTurns > 0 ? zone.remainingTurns / zone.maxTurns : 0;
+    const strength = Math.max(0.2, Math.min(1, intensityBase));
+    return {
+      id: zone.id,
+      x: zone.center.x,
+      y: zone.center.y,
+      radius: zone.radius,
+      strength,
+      color: zone.color,
+    };
+  }
+
+  private addZones(zones: ZoneState[]): void {
+    if (!zones.length) return;
+    this.state.zones.push(
+      ...zones.map((zone) => structuredClone(zone))
+    );
+    this.refreshPersistentZoneVisuals();
+  }
+
+  private applyStatusInflictions(effects: StatusEffect[]): void {
+    if (!effects.length) return;
+    for (const effect of effects) {
+      const unit = this.state.units.find((u) => u.id === effect.unitId && u.alive);
+      if (!unit) continue;
+      const existing = this.state.statuses.find((status) => status.unitId === effect.unitId);
+      if (existing) {
+        existing.remainingTurns = Math.max(existing.remainingTurns, effect.remainingTurns);
+        existing.damagePerTurn = effect.damagePerTurn;
+      } else {
+        this.state.statuses.push({ ...effect });
+      }
+    }
+  }
+
+  private applyTurnStartEffects(team: TeamId): void {
+    if (this.state.statuses.length === 0) return;
+    const remaining: StatusEffect[] = [];
+    const deaths: string[] = [];
+    for (const effect of this.state.statuses) {
+      const unit = this.state.units.find((u) => u.id === effect.unitId && u.alive);
+      if (!unit) continue;
+      if (unit.team !== team) {
+        remaining.push(effect);
+        continue;
+      }
+      if (effect.remainingTurns <= 0) continue;
+      unit.hp = Math.max(0, unit.hp - effect.damagePerTurn);
+      effect.remainingTurns -= 1;
+      if (unit.hp <= 0) {
+        unit.alive = false;
+        deaths.push(unit.id);
+      }
+      if (effect.remainingTurns > 0 && unit.alive) {
+        remaining.push(effect);
+      }
+    }
+    this.state.statuses = remaining;
+    if (deaths.length) {
+      this.registerDeaths(deaths);
+    }
+  }
+
+  private reduceZoneDurationsAfterRound(): void {
+    if (this.state.zones.length === 0) return;
+    this.state.zones = this.state.zones
+      .map((zone) => ({ ...zone, remainingTurns: zone.remainingTurns - 1 }))
+      .filter((zone) => zone.remainingTurns > 0);
+    this.refreshPersistentZoneVisuals();
+  }
+
+  private cleanupExpiredZones(): void {
+    const before = this.state.zones.length;
+    this.state.zones = this.state.zones.filter((zone) => zone.remainingTurns > 0);
+    if (this.state.zones.length !== before) {
+      this.refreshPersistentZoneVisuals();
+    }
   }
 
   private pointInRect(point: Vector, rect: { x: number; y: number; width: number; height: number }): boolean {
@@ -398,6 +664,19 @@ export class GameEngine {
       unit.position.y >= radius &&
       unit.position.y <= MAP.height - radius
     );
+  }
+
+  private pointInsideCircleBounds(position: Vector, radius: number): boolean {
+    return (
+      position.x >= radius &&
+      position.x <= MAP.width - radius &&
+      position.y >= radius &&
+      position.y <= MAP.height - radius
+    );
+  }
+
+  private isInHazard(position: Vector): boolean {
+    return MAP.lakes.some((lake) => this.pointInRect(position, lake));
   }
 
   private createBotAction(unit: UnitState): DragAction {
@@ -485,7 +764,11 @@ export class GameEngine {
         0: orderPlayer,
         1: orderBot,
       },
-    } as GameState;
+      zones: [],
+      statuses: [],
+      activeProjectiles: [],
+      activeZones: [],
+    };
 
     return state;
   }
