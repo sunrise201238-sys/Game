@@ -25,6 +25,7 @@ const BASE_FRICTION_PER_STEP = Math.pow(BASE_FRICTION, TIME_STEP);
 export interface RuntimeUnit extends UnitState {
   velocity: Vector2;
   statuses: DotStatus[];
+  hazardFrames: number;
 }
 
 export interface DotStatus {
@@ -124,6 +125,7 @@ function cloneUnit(unit: RuntimeUnit): RuntimeUnit {
     alive: unit.alive,
     velocity: { ...unit.velocity },
     statuses: unit.statuses.map((s) => ({ ...s })),
+    hazardFrames: unit.hazardFrames,
   };
 }
 
@@ -151,6 +153,7 @@ export function createInitialRuntime(
           ...unit,
           velocity: { x: 0, y: 0 },
           statuses: [],
+          hazardFrames: 0,
         })),
       },
       opponent: {
@@ -160,6 +163,7 @@ export function createInitialRuntime(
           ...unit,
           velocity: { x: 0, y: 0 },
           statuses: [],
+          hazardFrames: 0,
         })),
       },
     },
@@ -451,6 +455,11 @@ function integrateUnit(
     }
   }
 
+  if (isInHazard(state.map, unit.position)) {
+    unit.hazardFrames += 1;
+  } else {
+    unit.hazardFrames = 0;
+  }
 }
 
 function finalizeHazardDeaths(
@@ -461,10 +470,17 @@ function finalizeHazardDeaths(
   for (const role of ['you', 'opponent'] as PlayerRole[]) {
     for (const unit of state.teams[role].units) {
       if (!unit.alive) continue;
-      if (!isInHazard(state.map, unit.position)) continue;
+      if (!isInHazard(state.map, unit.position)) {
+        unit.hazardFrames = 0;
+        continue;
+      }
+      if (unit.hazardFrames <= PHYSICS_CONSTANTS.hazardGraceFrames) {
+        continue;
+      }
       unit.alive = false;
       recordGrave(state, unit, diff);
       killedUnits?.add(unit.id);
+      unit.hazardFrames = 0;
     }
   }
 }

@@ -8,7 +8,8 @@ export const PHYSICS_CONSTANTS = {
   enemyKnockbackScale: 1.8,
   impulseVelocityScale: 1.8,
   outOfBoundsZ: -10,
-  hashTolerance: 0.0001
+  hashTolerance: 0.0001,
+  hazardGraceFrames: 3
 } as const;
 
 export const ROUND_CONFIG = {

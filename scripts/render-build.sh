@@ -68,5 +68,12 @@ ensure_npm
 npm config set fund false
 npm config set audit false
 npm config set registry https://registry.npmjs.org/
-npm ci --workspaces
+npm config delete proxy >/dev/null 2>&1 || true
+npm config delete https-proxy >/dev/null 2>&1 || true
+
+if ! npm ci --workspaces; then
+  echo "npm ci failed; falling back to npm install --workspaces" >&2
+  npm install --workspaces
+fi
+
 npm run build

@@ -27,6 +27,7 @@ i18n/     – Localized UI strings (en-US, zh-TW)
 
 - Node.js 20 LTS (the repo includes an `.nvmrc` targeting 20)
 - npm 10 (install the latest npm 10.x before bootstrapping workspaces)
+- Ensure no corporate proxy variables such as `HTTP_PROXY`, `HTTPS_PROXY`, `npm_config_http_proxy`, or `npm_config_https_proxy` are set when installing. They will force npm through an invalid proxy inside containerized builds and lead to the recurring 403 errors observed on Render.
 
 ```bash
 nvm use 20 || nvm install 20
@@ -35,7 +36,7 @@ npm i -g npm@10
 
 ## Installing Dependencies
 
-> **Note:** The repository ships with a root `.npmrc` that pins the public npm registry and disables funding/audit prompts so `npm ci --workspaces` behaves consistently across CI and Render.
+> **Note:** The repository ships with a root `.npmrc` that pins the public npm registry and disables funding/audit prompts. `npm run bootstrap` attempts `npm ci --workspaces` first and automatically falls back to `npm install --workspaces` when the lock file drifts, so you are never blocked by the "package.json and package-lock.json are out of sync" error.
 
 ```bash
 npm run bootstrap

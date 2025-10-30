@@ -508,17 +508,10 @@ function filterTimelineAfterPreview(
   if (filtered.length === 0) {
     return [];
   }
-  const rebased = filtered.map((frame) => ({
+  return filtered.map((frame, index) => ({
     ...frame,
-    time: Number(Math.max(0, frame.time - normalizedCutoff).toFixed(4)),
+    time: index === 0 ? 0 : Number(Math.max(0, frame.time - normalizedCutoff).toFixed(4)),
   }));
-  rebased[0] = {
-    ...rebased[0],
-    time: 0,
-    you: runtimeUnitsToFrameUnits(runtime.teams.you.units),
-    opponent: runtimeUnitsToFrameUnits(runtime.teams.opponent.units),
-  };
-  return rebased;
 }
 
 function normalizeTimeline(frames: SimulationFrame[], offset: number): SimulationFrame[] {
@@ -528,16 +521,6 @@ function normalizeTimeline(frames: SimulationFrame[], offset: number): Simulatio
   return frames.map((frame) => ({
     ...frame,
     time: Number(Math.max(0, frame.time - base).toFixed(4)),
-  }));
-}
-
-function runtimeUnitsToFrameUnits(units: RuntimeUnit[]): SimulationFrame['you'] {
-  return units.map((unit) => ({
-    id: unit.id,
-    type: unit.type,
-    hp: unit.hp,
-    alive: unit.alive,
-    position: { ...unit.position },
   }));
 }
 
