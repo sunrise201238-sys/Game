@@ -126,26 +126,24 @@ export class Renderer {
   }
 
   private drawUnits(state: GameState): void {
-    const { ctx } = this;
     const highlightId = state.phase !== 'ended' ? this.getUpcomingUnitId(state, state.activeTeam) : null;
-    const baseStroke: Record<TeamId, string> = {
-      0: 'rgba(74,222,128,0.65)',
-      1: 'rgba(249,115,22,0.65)',
+    const teamStroke: Record<TeamId, string> = {
+      0: '#38bdf8',
+      1: '#f97316',
+    };
+    const teamCore: Record<TeamId, string> = {
+      0: 'rgba(59,130,246,0.9)',
+      1: 'rgba(249,115,22,0.9)',
     };
     const highlightStroke: Record<TeamId, string> = {
-      0: '#bbf7d0',
-      1: '#fed7aa',
+      0: '#e0f2fe',
+      1: '#ffedd5',
     };
 
     for (const unit of state.units) {
       if (!unit.alive) {
         continue;
       }
-      const radius = unit.def.radius;
-      ctx.fillStyle = this.getTeamFill(unit.def.color, unit.team);
-      ctx.beginPath();
-      ctx.arc(unit.position.x, unit.position.y, radius, 0, Math.PI * 2);
-      ctx.fill();
 
       const isHighlight = Boolean(
         highlightId &&
@@ -154,18 +152,12 @@ export class Renderer {
           state.phase !== 'ended'
       );
 
-      ctx.save();
-      ctx.lineWidth = isHighlight ? 4 : 3;
-      const stroke = baseStroke[unit.team] ?? 'rgba(255,255,255,0.55)';
-      ctx.strokeStyle = isHighlight ? highlightStroke[unit.team] ?? stroke : stroke;
-      if (isHighlight) {
-        ctx.shadowBlur = 18;
-        ctx.shadowColor = highlightStroke[unit.team] ?? stroke;
-      }
-      ctx.beginPath();
-      ctx.arc(unit.position.x, unit.position.y, radius, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
+      const fillColor = this.lightenColor(unit.def.color, 0.15);
+      const strokeColor = isHighlight ? highlightStroke[unit.team] ?? '#ffffff' : teamStroke[unit.team] ?? '#ffffff';
+      const centerColor = teamCore[unit.team] ?? 'rgba(255,255,255,0.8)';
+      const lineWidth = isHighlight ? 4 : 3;
+
+      this.drawUnitShape(unit, fillColor, strokeColor, centerColor, lineWidth, isHighlight);
       this.drawHpBar(unit);
     }
   }
@@ -229,7 +221,11 @@ export class Renderer {
 
     const clampedPower = Math.min(activeUnit.def.maxPower, dragDistance);
     const launchDir = normalize(dragVector);
-    const previewDistance = clampedPower * 1.2;
+    let previewDistance = clampedPower * 1.2;
+    if (activeUnit.def.projectile) {
+      const maxDist = activeUnit.def.projectile.maxDistance;
+      previewDistance = Math.max(previewDistance, maxDist * 0.95);
+    }
     const previewEnd = addVectors(dragOrigin, scale(launchDir, previewDistance));
 
     const { ctx } = this;
@@ -323,14 +319,89 @@ export class Renderer {
     return null;
   }
 
-  private getTeamFill(color: string, team: TeamId): string {
-    const base = this.parseColor(color);
-    const tint = team === 0 ? { r: 64, g: 224, b: 208 } : { r: 255, g: 132, b: 68 };
-    const ratio = 0.45;
-    const r = Math.round(base.r * (1 - ratio) + tint.r * ratio);
-    const g = Math.round(base.g * (1 - ratio) + tint.g * ratio);
-    const b = Math.round(base.b * (1 - ratio) + tint.b * ratio);
-    return `rgba(${r},${g},${b},0.95)`;
+  private drawUnitShape(
+    unit: UnitState,
+    fillColor: string,
+    strokeColor: string,
+    coreColor: string,
+    lineWidth: number,
+    highlight: boolean
+  ): void {
+    const { ctx } = this;
+    const radius = unit.def.radius;
+    ctx.save();
+    ctx.translate(unit.position.x, unit.position.y);
+    if (highlight) {
+      ctx.shadowBlur = 18;
+      ctx.shadowColor = strokeColor;
+    }
+
+    ctx.fillStyle = fillColor;
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = lineWidth;
+    ctx.beginPath();
+
+    switch (unit.def.id) {
+      case 'archer':
+        this.traceArcherShape(radius, unit.team === 0 ? 0 : Math.PI);
+        break;
+      case 'mage':
+        this.traceRegularPolygon(6, radius, Math.PI / 6);
+        break;
+      default:
+        ctx.arc(0, 0, radius, 0, Math.PI * 2);
+        break;
+    }
+
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.fillStyle = coreColor;
+    ctx.arc(0, 0, Math.max(4, radius * 0.35), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  private traceArcherShape(radius: number, orientation: number): void {
+    const base: Vector[] = [
+      { x: radius, y: 0 },
+      { x: -radius * 0.72, y: radius * 0.9 },
+      { x: -radius * 0.52, y: 0 },
+      { x: -radius * 0.72, y: -radius * 0.9 },
+    ];
+    base.forEach((point, index) => {
+      const rotated = this.rotatePoint(point, orientation);
+      if (index === 0) {
+        this.ctx.moveTo(rotated.x, rotated.y);
+      } else {
+        this.ctx.lineTo(rotated.x, rotated.y);
+      }
+    });
+    this.ctx.closePath();
+  }
+
+  private traceRegularPolygon(sides: number, radius: number, rotation = 0): void {
+    for (let i = 0; i < sides; i += 1) {
+      const angle = rotation + (Math.PI * 2 * i) / sides;
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius;
+      if (i === 0) {
+        this.ctx.moveTo(x, y);
+      } else {
+        this.ctx.lineTo(x, y);
+      }
+    }
+    this.ctx.closePath();
+  }
+
+  private rotatePoint(point: Vector, angle: number): Vector {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    return {
+      x: point.x * cos - point.y * sin,
+      y: point.x * sin + point.y * cos,
+    };
   }
 
   private parseColor(input: string): { r: number; g: number; b: number } {
@@ -349,6 +420,14 @@ export class Renderer {
       return { r: Number.isFinite(r) ? r : 255, g: Number.isFinite(g) ? g : 255, b: Number.isFinite(b) ? b : 255 };
     }
     return { r: 255, g: 255, b: 255 };
+  }
+
+  private lightenColor(input: string, amount: number): string {
+    const base = this.parseColor(input);
+    const r = Math.round(base.r + (255 - base.r) * amount);
+    const g = Math.round(base.g + (255 - base.g) * amount);
+    const b = Math.round(base.b + (255 - base.b) * amount);
+    return `rgba(${r},${g},${b},0.95)`;
   }
 
   private replaceAlpha(color: string, alpha: number): string {
