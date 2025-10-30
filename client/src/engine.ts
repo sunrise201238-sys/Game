@@ -91,6 +91,11 @@ export class GameEngine {
     this.emitState();
   }
 
+  private resolveZoneColor(spec: NonNullable<UnitDefinition['aoe']>, team: TeamId): string {
+    const fromTeam = spec.teamColors?.[team];
+    return fromTeam ?? spec.color;
+  }
+
   getSnapshot(): GameState {
     return structuredClone(this.state);
   }
@@ -336,7 +341,7 @@ export class GameEngine {
         maxTurns: spec.duration,
         dotDamage: spec.dotDamage,
         dotDuration: spec.dotDuration,
-        color: spec.color,
+        color: this.resolveZoneColor(spec, attacker.team),
       };
       newZones.push(zone);
       zoneClones.push(zone);

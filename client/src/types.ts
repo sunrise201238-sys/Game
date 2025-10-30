@@ -23,6 +23,7 @@ export interface AoeSpec {
   placementRange: number;
   travelScale: number;
   color: string;
+  teamColors?: Partial<Record<TeamId, string>>;
 }
 
 export interface UnitDefinition {

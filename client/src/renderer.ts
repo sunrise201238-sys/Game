@@ -21,6 +21,7 @@ export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private map: MapDefinition;
   private dpr = window.devicePixelRatio || 1;
+  private lastAimAngles = new Map<string, number>();
 
   constructor(canvas: HTMLCanvasElement, map: MapDefinition) {
     const ctx = canvas.getContext('2d');
@@ -128,16 +129,20 @@ export class Renderer {
   private drawUnits(state: GameState): void {
     const highlightId = state.phase !== 'ended' ? this.getUpcomingUnitId(state, state.activeTeam) : null;
     const teamStroke: Record<TeamId, string> = {
-      0: '#38bdf8',
+      0: '#0ea5e9',
       1: '#f97316',
     };
     const teamCore: Record<TeamId, string> = {
-      0: 'rgba(59,130,246,0.9)',
-      1: 'rgba(249,115,22,0.9)',
+      0: 'rgba(56,189,248,0.95)',
+      1: 'rgba(249,115,22,0.95)',
     };
     const highlightStroke: Record<TeamId, string> = {
-      0: '#e0f2fe',
-      1: '#ffedd5',
+      0: '#dbeafe',
+      1: '#ffe4c4',
+    };
+    const highlightAura: Record<TeamId, string> = {
+      0: 'rgba(125,211,252,0.9)',
+      1: 'rgba(253,186,116,0.9)',
     };
 
     for (const unit of state.units) {
@@ -152,12 +157,15 @@ export class Renderer {
           state.phase !== 'ended'
       );
 
-      const fillColor = this.lightenColor(unit.def.color, 0.15);
+      const fillColor = this.lightenColor(unit.def.color, unit.team === 0 ? 0.1 : -0.05);
       const strokeColor = isHighlight ? highlightStroke[unit.team] ?? '#ffffff' : teamStroke[unit.team] ?? '#ffffff';
       const centerColor = teamCore[unit.team] ?? 'rgba(255,255,255,0.8)';
       const lineWidth = isHighlight ? 4 : 3;
 
       this.drawUnitShape(unit, fillColor, strokeColor, centerColor, lineWidth, isHighlight);
+      if (isHighlight) {
+        this.drawHighlightAura(unit, highlightAura[unit.team] ?? strokeColor);
+      }
       this.drawHpBar(unit);
     }
   }
@@ -210,7 +218,10 @@ export class Renderer {
 
   private drawDragIndicator(state: GameState, options: RenderOptions): void {
     const { dragOrigin, dragCurrent } = options;
-    if (!dragOrigin || !dragCurrent) return;
+    if (!dragOrigin || !dragCurrent) {
+      this.lastAimAngles.clear();
+      return;
+    }
     const nextId = this.getUpcomingUnitId(state, state.activeTeam);
     const activeUnit = nextId ? state.units.find((u) => u.id === nextId) : undefined;
     if (!activeUnit) return;
@@ -220,7 +231,16 @@ export class Renderer {
     if (dragDistance < 2) return;
 
     const clampedPower = Math.min(activeUnit.def.maxPower, dragDistance);
-    const launchDir = normalize(dragVector);
+    let launchDir = normalize(dragVector);
+    if (activeUnit.def.id === 'archer') {
+      const targetAngle = Math.atan2(launchDir.y, launchDir.x);
+      const previous = this.lastAimAngles.get(activeUnit.id);
+      const eased = previous !== undefined ? this.easeAngle(previous, targetAngle, 0.25) : targetAngle;
+      this.lastAimAngles.set(activeUnit.id, eased);
+      launchDir = { x: Math.cos(eased), y: Math.sin(eased) };
+    } else {
+      this.lastAimAngles.delete(activeUnit.id);
+    }
     let previewDistance = clampedPower * 1.2;
     if (activeUnit.def.projectile) {
       const maxDist = activeUnit.def.projectile.maxDistance;
@@ -262,12 +282,13 @@ export class Renderer {
         y: Math.min(this.map.height - spec.radius, Math.max(spec.radius, desired.y)),
       };
       ctx.globalAlpha = 0.6;
-      ctx.fillStyle = this.replaceAlpha(spec.color, 0.35);
+      const zoneColor = spec.teamColors?.[state.activeTeam] ?? spec.color;
+      ctx.fillStyle = this.replaceAlpha(zoneColor, 0.35);
       ctx.beginPath();
       ctx.arc(center.x, center.y, spec.radius, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
-      ctx.strokeStyle = this.replaceAlpha(spec.color, 0.85);
+      ctx.strokeStyle = this.replaceAlpha(zoneColor, 0.85);
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(center.x, center.y, spec.radius, 0, Math.PI * 2);
@@ -363,6 +384,26 @@ export class Renderer {
     ctx.restore();
   }
 
+  private drawHighlightAura(unit: UnitState, auraColor: string): void {
+    const { ctx } = this;
+    ctx.save();
+    ctx.translate(unit.position.x, unit.position.y);
+    ctx.strokeStyle = auraColor;
+    ctx.lineWidth = 6;
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.arc(0, 0, unit.def.radius + 8, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.setLineDash([6, 6]);
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = this.replaceAlpha(auraColor, 0.7);
+    ctx.beginPath();
+    ctx.arc(0, 0, unit.def.radius + 12, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   private traceArcherShape(radius: number, orientation: number): void {
     const base: Vector[] = [
       { x: radius, y: 0 },
@@ -402,6 +443,11 @@ export class Renderer {
       x: point.x * cos - point.y * sin,
       y: point.x * sin + point.y * cos,
     };
+  }
+
+  private easeAngle(previous: number, target: number, amount: number): number {
+    const delta = Math.atan2(Math.sin(target - previous), Math.cos(target - previous));
+    return previous + delta * amount;
   }
 
   private parseColor(input: string): { r: number; g: number; b: number } {
