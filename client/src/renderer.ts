@@ -252,14 +252,30 @@ export class Renderer {
     const { ctx } = this;
     ctx.save();
 
-    const baseStroke = state.activeTeam === 0 ? '#bfdbfe' : '#fcd34d';
-    const extensionStroke = state.activeTeam === 0 ? '#38bdf8' : '#fb923c';
+    const projectileColor = activeUnit.def.projectile?.color;
+    const baseStroke = projectileColor
+      ? this.replaceAlpha(projectileColor, 0.95)
+      : state.activeTeam === 0
+        ? '#bfdbfe'
+        : '#fcd34d';
+    const extensionStroke = projectileColor
+      ? this.replaceAlpha(projectileColor, 0.6)
+      : state.activeTeam === 0
+        ? '#38bdf8'
+        : '#fb923c';
+    const glowColor = projectileColor
+      ? this.replaceAlpha(projectileColor, 0.75)
+      : state.activeTeam === 0
+        ? 'rgba(191,219,254,0.55)'
+        : 'rgba(252,211,77,0.55)';
 
     ctx.globalCompositeOperation = 'source-over';
-    ctx.lineWidth = 4;
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 4.5;
     ctx.strokeStyle = baseStroke;
     ctx.setLineDash([]);
-    ctx.shadowBlur = 0;
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = glowColor;
     ctx.beginPath();
     ctx.moveTo(dragOrigin.x, dragOrigin.y);
     ctx.lineTo(previewEnd.x, previewEnd.y);
@@ -267,8 +283,10 @@ export class Renderer {
 
     if (extensionEnd) {
       ctx.strokeStyle = extensionStroke;
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 3.2;
       ctx.setLineDash([6, 6]);
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
       ctx.beginPath();
       ctx.moveTo(previewEnd.x, previewEnd.y);
       ctx.lineTo(extensionEnd.x, extensionEnd.y);
@@ -276,6 +294,8 @@ export class Renderer {
     }
 
     ctx.setLineDash([]);
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = glowColor;
     const arrowTarget = extensionEnd ?? previewEnd;
     const arrowHead = addVectors(arrowTarget, scale(launchDir, 20));
     ctx.fillStyle = baseStroke;
@@ -286,6 +306,8 @@ export class Renderer {
     ctx.closePath();
     ctx.fill();
 
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.beginPath();
     ctx.arc(dragOrigin.x, dragOrigin.y, 6, 0, Math.PI * 2);
