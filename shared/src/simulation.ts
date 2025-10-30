@@ -318,6 +318,9 @@ export function simulateRound(
       }
     }
 
+    finalizeHazardDeaths(state, diff, killedUnits);
+    recordFrame();
+
     if (forfeitWinner) {
       break;
     }
@@ -440,9 +443,21 @@ function integrateUnit(
     }
   }
 
-  if (isInHazard(state.map, unit.position)) {
-    unit.alive = false;
-    recordGrave(state, unit, diff);
+}
+
+function finalizeHazardDeaths(
+  state: MatchRuntimeState,
+  diff: RoundDiff,
+  killedUnits?: Set<string>,
+) {
+  for (const role of ['you', 'opponent'] as PlayerRole[]) {
+    for (const unit of state.teams[role].units) {
+      if (!unit.alive) continue;
+      if (!isInHazard(state.map, unit.position)) continue;
+      unit.alive = false;
+      recordGrave(state, unit, diff);
+      killedUnits?.add(unit.id);
+    }
   }
 }
 

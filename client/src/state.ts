@@ -145,6 +145,10 @@ export class GameStateManager {
     this.previewAction(role, action);
   }
 
+  private getRoundOrder(): PlayerRole[] {
+    return this.firstMover === 'you' ? (['you', 'opponent'] as PlayerRole[]) : (['opponent', 'you'] as PlayerRole[]);
+  }
+
   getActiveUnitId(role: PlayerRole): string | null {
     const source = this.previewState ?? this.runtime;
     if (!source) return null;
@@ -333,7 +337,7 @@ export class GameStateManager {
         you: this.actions.you ?? null,
         opponent: this.actions.opponent ?? null,
       },
-      actingOrder: this.firstMover === 'you' ? ['you', 'opponent'] : ['opponent', 'you'],
+      actingOrder: this.getRoundOrder(),
       captureTimeline: true,
     });
     this.pendingOutcome = outcome;
@@ -358,9 +362,14 @@ export class GameStateManager {
   private previewAction(role: PlayerRole, action: UnitAction) {
     if (!this.runtime) return;
     const context = { map: this.runtime.map, unitsById: UNITS_BY_ID } as const;
-    const actions: Record<PlayerRole, UnitAction | null> = { you: null, opponent: null };
+    const actions: Record<PlayerRole, UnitAction | null> = {
+      you: this.actions.you ?? null,
+      opponent: this.actions.opponent ?? null,
+    };
     actions[role] = action;
-    const actingOrder = this.firstMover === 'you' ? (['you', 'opponent'] as PlayerRole[]) : (['opponent', 'you'] as PlayerRole[]);
+    const fullOrder = this.getRoundOrder();
+    const otherRole: PlayerRole = role === 'you' ? 'opponent' : 'you';
+    const actingOrder = this.actions[otherRole] ? fullOrder : (fullOrder.filter((candidate) => candidate === role) as PlayerRole[]);
     const outcome = simulateRound(context, {
       state: this.runtime,
       actions,
@@ -368,7 +377,6 @@ export class GameStateManager {
       captureTimeline: true,
     });
     const preview = outcome.next;
-    const otherRole: PlayerRole = role === 'you' ? 'opponent' : 'you';
     if (!this.actions[otherRole]) {
       preview.cursors[otherRole] = this.runtime.cursors[otherRole];
       preview.round = this.runtime.round + 1;
@@ -376,7 +384,10 @@ export class GameStateManager {
     }
     this.previewState = preview;
     this.previewRound = preview.round;
-    this.previewMode = this.previewMode === 'full' ? 'full' : 'partial';
+    this.previewMode = this.actions.you && this.actions.opponent ? 'full' : 'partial';
+    this.state.youUnits = preview.teams.you.units.map(toClientRuntimeUnit);
+    this.state.opponentUnits = preview.teams.opponent.units.map(toClientRuntimeUnit);
+    this.state.graves = extractGraves(outcome.diff);
     this.state.activeYouId = this.getActiveUnitId('you');
     this.state.activeOpponentId = this.getActiveUnitId('opponent');
     this.emit();
