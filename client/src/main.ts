@@ -16,13 +16,10 @@ const modeButtons = Array.from(
 );
 const playerHeading = document.getElementById('team-a-label') as HTMLHeadingElement;
 const opponentHeading = document.getElementById('team-b-label') as HTMLHeadingElement;
-const boardWrapper = document.getElementById('board-wrapper') as HTMLElement;
-const fullscreenButton = document.getElementById('fullscreen-btn') as HTMLButtonElement;
 const zoomInButton = document.getElementById('zoom-in') as HTMLButtonElement;
 const zoomOutButton = document.getElementById('zoom-out') as HTMLButtonElement;
 const zoomResetButton = document.getElementById('zoom-reset') as HTMLButtonElement;
 const zoomIndicator = document.getElementById('zoom-indicator') as HTMLSpanElement;
-const appRoot = document.getElementById('app') as HTMLElement;
 const ZOOM_STEP = 1.2;
 const DRAG_INPUT_MULTIPLIER = 1.35;
 
@@ -50,22 +47,6 @@ let isPanning = false;
 let panPointerId: number | null = null;
 let panLast: { x: number; y: number } | null = null;
 let panKeyActive = false;
-let pseudoFullscreen = false;
-
-type VendorFullscreenElement = HTMLElement & {
-  webkitRequestFullscreen?: () => Promise<void>;
-};
-
-type VendorFullscreenDocument = Document & {
-  webkitExitFullscreen?: () => Promise<void>;
-};
-
-const fullscreenElement = boardWrapper as VendorFullscreenElement;
-const fullscreenDocument = document as VendorFullscreenDocument;
-const hasNativeFullscreen =
-  typeof fullscreenElement.requestFullscreen === 'function' ||
-  typeof fullscreenElement.webkitRequestFullscreen === 'function';
-
 const engine = new GameEngine({
   onState: (state) => {
     if (state.mapId !== currentMap.id) {
@@ -90,93 +71,6 @@ const renderScene = () => {
     dragOrigin: isDragging ? dragOrigin : null,
     dragCurrent: isDragging ? dragCurrent : null,
   });
-};
-
-const isNativeFullscreenActive = () => document.fullscreenElement === boardWrapper;
-const isFullscreenActive = () => isNativeFullscreenActive() || pseudoFullscreen;
-
-const updateFullscreenButton = () => {
-  const active = isFullscreenActive();
-  fullscreenButton.textContent = active ? 'Exit Fullscreen' : 'Fullscreen';
-  fullscreenButton.setAttribute('aria-pressed', active ? 'true' : 'false');
-};
-
-const syncFullscreenUi = () => {
-  const active = isFullscreenActive();
-  document.body.classList.toggle('fullscreen-active', active);
-  appRoot.classList.toggle('fullscreen-active', active);
-};
-
-const requestNativeFullscreen = (): Promise<void> | null => {
-  if (typeof fullscreenElement.requestFullscreen === 'function') {
-    try {
-      const result = fullscreenElement.requestFullscreen();
-      if (result && typeof (result as Promise<void>).then === 'function') {
-        return result as Promise<void>;
-      }
-      return Promise.resolve();
-    } catch (error) {
-      return Promise.reject(error as Error);
-    }
-  }
-  if (typeof fullscreenElement.webkitRequestFullscreen === 'function') {
-    return new Promise<void>((resolve, reject) => {
-      try {
-        fullscreenElement.webkitRequestFullscreen!();
-        resolve();
-      } catch (error) {
-        reject(error as Error);
-      }
-    });
-  }
-  return null;
-};
-
-const exitNativeFullscreen = (): Promise<void> | null => {
-  if (typeof fullscreenDocument.exitFullscreen === 'function') {
-    try {
-      const result = fullscreenDocument.exitFullscreen();
-      if (result && typeof (result as Promise<void>).then === 'function') {
-        return result as Promise<void>;
-      }
-      return Promise.resolve();
-    } catch (error) {
-      return Promise.reject(error as Error);
-    }
-  }
-  if (typeof fullscreenDocument.webkitExitFullscreen === 'function') {
-    return new Promise<void>((resolve, reject) => {
-      try {
-        fullscreenDocument.webkitExitFullscreen!();
-        resolve();
-      } catch (error) {
-        reject(error as Error);
-      }
-    });
-  }
-  return null;
-};
-
-const enterPseudoFullscreen = () => {
-  if (pseudoFullscreen) return;
-  pseudoFullscreen = true;
-  document.body.classList.add('pseudo-fullscreen-active');
-  boardWrapper.classList.add('pseudo-fullscreen');
-  updateFullscreenButton();
-  syncFullscreenUi();
-  renderer.refreshViewport();
-  renderScene();
-};
-
-const exitPseudoFullscreen = () => {
-  if (!pseudoFullscreen) return;
-  pseudoFullscreen = false;
-  document.body.classList.remove('pseudo-fullscreen-active');
-  boardWrapper.classList.remove('pseudo-fullscreen');
-  updateFullscreenButton();
-  syncFullscreenUi();
-  renderer.refreshViewport();
-  renderScene();
 };
 
 const updateZoomUi = () => {
@@ -206,8 +100,6 @@ const applyZoomFactor = (factor: number, anchor?: Vector) => {
 
 renderScene();
 updateZoomUi();
-updateFullscreenButton();
-syncFullscreenUi();
 
 restartButton.addEventListener('click', () => {
   isDragging = false;
@@ -326,13 +218,6 @@ window.addEventListener('keydown', (event) => {
   panKeyActive = true;
   canvas.classList.add('pan-ready');
   event.preventDefault();
-});
-
-window.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape') return;
-  if (pseudoFullscreen && !isNativeFullscreenActive()) {
-    exitPseudoFullscreen();
-  }
 });
 
 window.addEventListener('keyup', (event) => {
@@ -456,47 +341,6 @@ zoomResetButton.addEventListener('click', () => {
   renderer.refreshViewport();
   renderScene();
   updateZoomUi();
-});
-
-fullscreenButton.addEventListener('click', () => {
-  if (isNativeFullscreenActive()) {
-    const result = exitNativeFullscreen();
-    if (result) {
-      result.catch(() => undefined);
-    }
-    return;
-  }
-
-  if (pseudoFullscreen) {
-    exitPseudoFullscreen();
-    return;
-  }
-
-  if (hasNativeFullscreen) {
-    const result = requestNativeFullscreen();
-    if (result) {
-      result.catch(() => {
-        enterPseudoFullscreen();
-      });
-      return;
-    }
-  }
-
-  enterPseudoFullscreen();
-});
-
-document.addEventListener('fullscreenchange', () => {
-  updateFullscreenButton();
-  syncFullscreenUi();
-  renderer.refreshViewport();
-  renderScene();
-});
-
-document.addEventListener('fullscreenerror', () => {
-  if (!pseudoFullscreen) {
-    enterPseudoFullscreen();
-  }
-  syncFullscreenUi();
 });
 
 function toWorldPoint(event: PointerEvent | WheelEvent): Vector {
