@@ -1,3 +1,5 @@
+https://game-server-w4xj.onrender.com/
+
 # Slingshot Skirmish (Offline Bot Edition)
 
 This repository now delivers a focused, offline-only build of the round-based slingshot prototype. The entire experience lives in the browser: you drag, the bot answers, and every turn animates immediately with clear, sequential playback. All multiplayer, networking, and anti-cheat code has been removed to keep the project lightweight and easy to reason about.
