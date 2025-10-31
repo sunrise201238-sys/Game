@@ -19,12 +19,14 @@ const TEAM_UNIT_BASE_COLORS: Record<TeamId, UnitColorPalette> = {
     soldier: '#1d4ed8',
     archer: '#2563eb',
     mage: '#38bdf8',
+    'perfect-soldier': '#c084fc',
   },
   1: {
     default: '#ea580c',
     soldier: '#dc2626',
     archer: '#f97316',
     mage: '#f97316',
+    'perfect-soldier': '#a855f7',
   },
 };
 
@@ -34,12 +36,14 @@ const TEAM_UNIT_CORE_COLORS: Record<TeamId, UnitColorPalette> = {
     soldier: 'rgba(96,165,250,0.95)',
     archer: 'rgba(129,199,255,0.95)',
     mage: 'rgba(125,211,252,0.95)',
+    'perfect-soldier': 'rgba(233,213,255,0.95)',
   },
   1: {
     default: 'rgba(249,115,22,0.95)',
     soldier: 'rgba(248,113,113,0.95)',
     archer: 'rgba(249,115,22,0.95)',
     mage: 'rgba(251,146,60,0.95)',
+    'perfect-soldier': 'rgba(233,213,255,0.95)',
   },
 };
 

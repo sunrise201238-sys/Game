@@ -964,13 +964,24 @@ export class GameEngine {
       alive: true,
     });
 
-    this.loadout.forEach((unitId, index) => {
-      const def = getUnitDefinition(unitId);
-      const playerSpawn = this.ensureSafeSpawn(map.playerSpawns[index % map.playerSpawns.length], def.radius);
-      const botSpawn = this.ensureSafeSpawn(map.botSpawns[index % map.botSpawns.length], def.radius);
-      units.push(createUnit(def, PLAYER_TEAM, playerSpawn, index));
-      units.push(createUnit(def, BOT_TEAM, botSpawn, index));
-    });
+    const playerLoadout = map.teamLoadouts?.[PLAYER_TEAM] ?? this.loadout;
+    const botLoadout = map.teamLoadouts?.[BOT_TEAM] ?? this.loadout;
+    const maxSlots = Math.max(playerLoadout.length, botLoadout.length);
+
+    for (let index = 0; index < maxSlots; index += 1) {
+      if (index < playerLoadout.length) {
+        const unitId = playerLoadout[index];
+        const def = getUnitDefinition(unitId);
+        const spawn = this.ensureSafeSpawn(map.playerSpawns[index % map.playerSpawns.length], def.radius);
+        units.push(createUnit(def, PLAYER_TEAM, spawn, index));
+      }
+      if (index < botLoadout.length) {
+        const unitId = botLoadout[index];
+        const def = getUnitDefinition(unitId);
+        const spawn = this.ensureSafeSpawn(map.botSpawns[index % map.botSpawns.length], def.radius);
+        units.push(createUnit(def, BOT_TEAM, spawn, index));
+      }
+    }
 
     const orderPlayer = this.createOrder(units, PLAYER_TEAM);
     const orderBot = this.createOrder(units, BOT_TEAM);

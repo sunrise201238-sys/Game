@@ -78,6 +78,7 @@ export interface MapDefinition {
   playerSpawns: Vector[];
   botSpawns: Vector[];
   description?: string;
+  teamLoadouts?: Partial<Record<TeamId, string[]>>;
 }
 
 export type GamePhase = 'aim' | 'bot-planning' | 'animating' | 'ended';
