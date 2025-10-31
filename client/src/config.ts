@@ -24,6 +24,7 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
     recoil: 90,
     resistance: 0.55,
     maxPower: 340,
+    aimCurveExponent: 4,
     projectile: {
       speed: 720,
       radius: 6,
