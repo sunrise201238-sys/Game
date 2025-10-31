@@ -19,12 +19,14 @@ const TEAM_UNIT_BASE_COLORS: Record<TeamId, UnitColorPalette> = {
     soldier: '#1d4ed8',
     archer: '#2563eb',
     mage: '#38bdf8',
+    'perfect-soldier': '#c084fc',
   },
   1: {
     default: '#ea580c',
     soldier: '#dc2626',
     archer: '#f97316',
     mage: '#f97316',
+    'perfect-soldier': '#a855f7',
   },
 };
 
@@ -34,12 +36,14 @@ const TEAM_UNIT_CORE_COLORS: Record<TeamId, UnitColorPalette> = {
     soldier: 'rgba(96,165,250,0.95)',
     archer: 'rgba(129,199,255,0.95)',
     mage: 'rgba(125,211,252,0.95)',
+    'perfect-soldier': 'rgba(233,213,255,0.95)',
   },
   1: {
     default: 'rgba(249,115,22,0.95)',
     soldier: 'rgba(248,113,113,0.95)',
     archer: 'rgba(249,115,22,0.95)',
     mage: 'rgba(251,146,60,0.95)',
+    'perfect-soldier': 'rgba(233,213,255,0.95)',
   },
 };
 
@@ -53,6 +57,17 @@ export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private map: MapDefinition;
   private dpr = window.devicePixelRatio || 1;
+  private baseScale = 1;
+  private zoom = 1;
+  private offset: Vector = { x: 0, y: 0 };
+  private readonly minZoom = 1;
+  private readonly maxZoom = 2.5;
+  private resizeObserver: ResizeObserver | null = null;
+  private pendingResizeFrame: number | null = null;
+  private lastState: GameState | null = null;
+  private lastOptions: RenderOptions | null = null;
+  private isRendering = false;
+  private needsRerender = false;
 
   constructor(canvas: HTMLCanvasElement, map: MapDefinition) {
     const ctx = canvas.getContext('2d');
@@ -62,43 +77,188 @@ export class Renderer {
     this.canvas = canvas;
     this.ctx = ctx;
     this.map = map;
-    this.resizeToMap(this.map);
-    window.addEventListener('resize', () => this.resizeToMap(this.map));
+    this.resetCamera();
+    this.updateCanvasSize();
+    window.addEventListener('resize', () => this.handleResize());
+    this.observeParent();
   }
 
   setMap(map: MapDefinition): void {
-    this.resizeToMap(map);
+    this.map = map;
+    this.resetCamera();
+    this.updateCanvasSize();
+    this.observeParent();
   }
 
-  resizeToMap(map: MapDefinition): void {
-    this.map = map;
-    const { width, height } = map;
-    const rect = this.canvas.getBoundingClientRect();
-    const scaleRatio = Math.min(rect.width / width, rect.height / height) || 1;
-    const targetWidth = width * scaleRatio;
-    const targetHeight = height * scaleRatio;
-    this.canvas.width = targetWidth * this.dpr;
-    this.canvas.height = targetHeight * this.dpr;
-    this.canvas.style.width = `${targetWidth}px`;
-    this.canvas.style.height = `${targetHeight}px`;
-    this.ctx.setTransform(this.dpr * scaleRatio, 0, 0, this.dpr * scaleRatio, 0, 0);
+  private handleResize(): void {
+    if (this.pendingResizeFrame !== null) {
+      window.cancelAnimationFrame(this.pendingResizeFrame);
+    }
+    this.pendingResizeFrame = window.requestAnimationFrame(() => {
+      this.pendingResizeFrame = null;
+      this.updateCanvasSize();
+    });
+  }
+
+  private updateCanvasSize(): void {
+    const { width, height } = this.map;
+    const parent = this.canvas.parentElement as HTMLElement | null;
+    const parentRect = parent?.getBoundingClientRect();
+    const measuredWidth = parentRect?.width ?? this.canvas.getBoundingClientRect().width;
+    const fallbackWidth = parent?.clientWidth ?? this.canvas.clientWidth;
+    let resolvedWidth = width;
+    const widthCandidates = [measuredWidth, fallbackWidth];
+    for (const candidate of widthCandidates) {
+      if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {
+        resolvedWidth = candidate;
+        break;
+      }
+    }
+
+    this.baseScale = resolvedWidth / width;
+    const targetPixelWidth = Math.max(1, Math.round(width * this.baseScale * this.dpr));
+    const targetPixelHeight = Math.max(1, Math.round(height * this.baseScale * this.dpr));
+    this.canvas.width = targetPixelWidth;
+    this.canvas.height = targetPixelHeight;
+    this.offset = this.clampOffsetForZoom(this.offset, this.zoom);
+    this.applyTransform();
+    this.rerender();
+  }
+
+  private applyTransform(): void {
+    const scale = this.baseScale * this.zoom;
+    const pixelScale = scale * this.dpr;
+    const translateX = -this.offset.x * pixelScale;
+    const translateY = -this.offset.y * pixelScale;
+    this.ctx.setTransform(pixelScale, 0, 0, pixelScale, translateX, translateY);
+  }
+
+  resetCamera(): void {
+    this.zoom = 1;
+    this.offset = this.clampOffsetForZoom({ x: 0, y: 0 }, this.zoom);
+    this.applyTransform();
+  }
+
+  getZoom(): number {
+    return this.zoom;
+  }
+
+  getZoomLimits(): { min: number; max: number } {
+    return { min: this.minZoom, max: this.maxZoom };
+  }
+
+  getViewSize(): Vector {
+    return { x: this.map.width / this.zoom, y: this.map.height / this.zoom };
+  }
+
+  getOffset(): Vector {
+    return { ...this.offset };
+  }
+
+  setZoom(zoom: number, anchor?: Vector): void {
+    const clamped = Math.min(this.maxZoom, Math.max(this.minZoom, zoom));
+    const currentView = this.getViewSize();
+    const focus = anchor ?? {
+      x: this.offset.x + currentView.x / 2,
+      y: this.offset.y + currentView.y / 2,
+    };
+    this.zoom = clamped;
+    const nextView = this.getViewSize();
+    const desiredOffset = {
+      x: focus.x - nextView.x / 2,
+      y: focus.y - nextView.y / 2,
+    };
+    this.offset = this.clampOffsetForZoom(desiredOffset, this.zoom);
+    this.applyTransform();
+  }
+
+  panBy(delta: Vector): void {
+    const desired = { x: this.offset.x + delta.x, y: this.offset.y + delta.y };
+    this.offset = this.clampOffsetForZoom(desired, this.zoom);
+    this.applyTransform();
+  }
+
+  refreshViewport(): void {
+    this.updateCanvasSize();
+  }
+
+  private observeParent(): void {
+    if (typeof ResizeObserver === 'undefined') {
+      return;
+    }
+    const parent = this.canvas.parentElement;
+    if (!parent) {
+      return;
+    }
+    if (!this.resizeObserver) {
+      this.resizeObserver = new ResizeObserver(() => this.handleResize());
+    } else {
+      this.resizeObserver.disconnect();
+    }
+    this.resizeObserver.observe(parent);
+  }
+
+  private clampOffsetForZoom(offset: Vector, zoom: number): Vector {
+    const viewWidth = this.map.width / zoom;
+    const viewHeight = this.map.height / zoom;
+    const extraWidth = Math.max(0, viewWidth - this.map.width);
+    const extraHeight = Math.max(0, viewHeight - this.map.height);
+    const minX = extraWidth > 0 ? -extraWidth / 2 : 0;
+    const maxX = extraWidth > 0 ? extraWidth / 2 : Math.max(0, this.map.width - viewWidth);
+    const minY = extraHeight > 0 ? -extraHeight / 2 : 0;
+    const maxY = extraHeight > 0 ? extraHeight / 2 : Math.max(0, this.map.height - viewHeight);
+    return {
+      x: Math.min(Math.max(offset.x, minX), maxX),
+      y: Math.min(Math.max(offset.y, minY), maxY),
+    };
   }
 
   render(state: GameState, options: RenderOptions = {}): void {
-    this.clear();
-    this.drawArena();
-    this.drawLakes();
-    this.drawWalls();
-    this.drawZones(state.activeZones);
-    this.drawGraves(state.graves);
-    this.drawUnits(state);
-    this.drawProjectiles(state.activeProjectiles);
-    this.drawDragIndicator(state, options);
-    this.drawStatus(state);
+    this.lastState = state;
+    this.lastOptions = { ...options };
+    if (this.isRendering) {
+      this.needsRerender = true;
+      return;
+    }
+    this.isRendering = true;
+    this.needsRerender = false;
+    try {
+      this.prepareFrame();
+      this.drawArena();
+      this.drawLakes();
+      this.drawWalls();
+      this.drawZones(state.activeZones);
+      this.drawGraves(state.graves);
+      this.drawUnits(state);
+      this.drawProjectiles(state.activeProjectiles);
+      this.drawDragIndicator(state, options);
+      this.drawStatus(state);
+    } finally {
+      this.isRendering = false;
+      if (this.needsRerender) {
+        this.needsRerender = false;
+        this.rerender();
+      }
+    }
   }
 
-  private clear(): void {
+  private rerender(): void {
+    if (!this.lastState) {
+      return;
+    }
+    if (this.isRendering) {
+      this.needsRerender = true;
+      return;
+    }
+    this.needsRerender = false;
+    const options = this.lastOptions ? { ...this.lastOptions } : {};
+    this.render(this.lastState, options);
+  }
+
+  private prepareFrame(): void {
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.applyTransform();
   }
 
   private drawArena(): void {
@@ -230,22 +390,16 @@ export class Renderer {
 
   private drawGraves(graves: GraveMarker[]): void {
     const { ctx } = this;
-    ctx.fillStyle = '#cccccc';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.textAlign = 'center';
     for (const grave of graves) {
       ctx.save();
+      const markerColor = grave.team === 0 ? 'rgba(148,163,184,0.85)' : 'rgba(250,204,21,0.85)';
+      ctx.fillStyle = markerColor;
       ctx.translate(grave.position.x, grave.position.y);
       ctx.rotate(-Math.PI / 8);
       ctx.fillRect(-4, -16, 8, 20);
       ctx.fillRect(-10, -10, 20, 6);
       ctx.restore();
-      if (grave.count > 1) {
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(`×${grave.count}`, grave.position.x, grave.position.y - 20);
-      }
     }
-    ctx.textAlign = 'left';
   }
 
   private drawDragIndicator(state: GameState, options: RenderOptions): void {

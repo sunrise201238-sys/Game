@@ -32,7 +32,17 @@
           </div>
         </section>
         <section id="board-wrapper">
-          <canvas id="gameCanvas" width="960" height="540"></canvas>
+          <div class="board-controls" role="group" aria-label="Zoom controls">
+            <div class="zoom-controls">
+              <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
+              <span id="zoom-indicator" aria-live="polite">100%</span>
+              <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
+              <button id="zoom-reset" type="button" aria-label="Reset zoom">Reset</button>
+            </div>
+          </div>
+          <div id="board-stage">
+            <canvas id="gameCanvas" width="960" height="540"></canvas>
+          </div>
         </section>
         <section id="team-panels">
           <div class="team-card" aria-label="Your squad">

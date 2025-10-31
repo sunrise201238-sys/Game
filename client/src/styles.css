@@ -125,7 +125,12 @@ header button:hover {
 main {
   flex: 1;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.25rem;
+}
+
+main > * {
+  min-width: 0;
 }
 
 .hud {
@@ -158,20 +163,110 @@ main {
 
 #board-wrapper {
   display: flex;
-  justify-content: center;
-  align-items: center;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  gap: 0.75rem;
   padding: 1rem;
   background: rgba(255, 255, 255, 0.04);
   border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.05);
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#board-stage {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: var(--board-aspect, 16 / 9);
+  border-radius: 14px;
+  overflow: hidden;
+  background: radial-gradient(circle at center, rgba(28, 38, 56, 0.85), rgba(9, 17, 31, 0.95));
 }
 
 #gameCanvas {
+  display: block;
   width: 100%;
-  max-width: 960px;
+  height: 100%;
+}
+
+.board-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.zoom-controls button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.5rem 1rem;
+  background: linear-gradient(135deg, rgba(83, 225, 255, 0.95), rgba(255, 111, 145, 0.95));
+  color: #0b132b;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(83, 225, 255, 0.25);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.zoom-controls button {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.zoom-controls button:hover,
+.zoom-controls button:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(83, 225, 255, 0.35);
+  outline: none;
+}
+
+.zoom-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none;
+}
+
+.zoom-controls button:disabled:hover,
+.zoom-controls button:disabled:focus-visible {
+  transform: none;
+  box-shadow: none;
+}
+
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.4rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.zoom-controls span {
+  min-width: 3.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+#gameCanvas {
+  display: block;
+  width: 100%;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(10, 18, 35, 0.85);
+}
+
+#gameCanvas.pan-ready {
+  cursor: grab;
+}
+
+#gameCanvas.pan-active {
+  cursor: grabbing;
 }
 
 #team-panels {

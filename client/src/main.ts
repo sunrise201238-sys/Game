@@ -1,7 +1,7 @@
 import { DEFAULT_MAP_ID, MAPS, getMapById } from './config';
 import { GameEngine } from './engine';
 import { Renderer } from './renderer';
-import type { GameMode, GameState, TeamId, UnitState, Vector } from './types';
+import type { GameMode, GameState, MapDefinition, TeamId, UnitState, Vector } from './types';
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const restartButton = document.getElementById('restart-btn') as HTMLButtonElement;
@@ -16,6 +16,13 @@ const modeButtons = Array.from(
 );
 const playerHeading = document.getElementById('team-a-label') as HTMLHeadingElement;
 const opponentHeading = document.getElementById('team-b-label') as HTMLHeadingElement;
+const zoomInButton = document.getElementById('zoom-in') as HTMLButtonElement;
+const zoomOutButton = document.getElementById('zoom-out') as HTMLButtonElement;
+const zoomResetButton = document.getElementById('zoom-reset') as HTMLButtonElement;
+const zoomIndicator = document.getElementById('zoom-indicator') as HTMLSpanElement;
+const boardStage = document.getElementById('board-stage') as HTMLDivElement;
+const ZOOM_STEP = 1.2;
+const DRAG_INPUT_MULTIPLIER = 1.35;
 
 let currentMap = getMapById(DEFAULT_MAP_ID);
 let currentMode: GameMode = 'bot';
@@ -29,25 +36,38 @@ for (const map of MAPS) {
 mapSelect.value = currentMap.id;
 
 const renderer = new Renderer(canvas, currentMap);
+const zoomLimits = renderer.getZoomLimits();
+
+const applyStageAspect = (map: MapDefinition) => {
+  if (boardStage) {
+    boardStage.style.setProperty('--board-aspect', `${map.width} / ${map.height}`);
+  }
+};
+
+applyStageAspect(currentMap);
 
 let currentState: GameState;
 let isDragging = false;
 let dragOrigin: Vector | null = null;
 let dragCurrent: Vector | null = null;
-
+let dragPointerId: number | null = null;
+let dragVector: Vector | null = null;
+let isPanning = false;
+let panPointerId: number | null = null;
+let panLast: { x: number; y: number } | null = null;
+let panKeyActive = false;
 const engine = new GameEngine({
   onState: (state) => {
     if (state.mapId !== currentMap.id) {
       currentMap = getMapById(state.mapId);
       renderer.setMap(currentMap);
       mapSelect.value = currentMap.id;
+      applyStageAspect(currentMap);
+      updateZoomUi();
     }
     currentState = state;
     updateUi(state);
-    renderer.render(state, {
-      dragOrigin: isDragging ? dragOrigin : null,
-      dragCurrent: isDragging ? dragCurrent : null,
-    });
+    renderScene();
   },
   onFrame: () => {
     // no-op: renderer re-renders when state updates
@@ -56,21 +76,76 @@ const engine = new GameEngine({
 
 currentState = engine.getSnapshot();
 updateUi(currentState);
-renderer.render(currentState);
+const renderScene = () => {
+  renderer.render(currentState, {
+    dragOrigin: isDragging ? dragOrigin : null,
+    dragCurrent: isDragging ? dragCurrent : null,
+  });
+};
+
+const updateZoomUi = () => {
+  const zoom = renderer.getZoom();
+  const percent = Math.round(zoom * 100);
+  zoomIndicator.textContent = `${percent}%`;
+  const minThreshold = zoomLimits.min + 0.01;
+  const maxThreshold = zoomLimits.max - 0.01;
+  zoomOutButton.disabled = zoom <= minThreshold;
+  zoomInButton.disabled = zoom >= maxThreshold;
+};
+
+const getCameraCenter = (): Vector => {
+  const offset = renderer.getOffset();
+  const view = renderer.getViewSize();
+  return {
+    x: offset.x + view.x / 2,
+    y: offset.y + view.y / 2,
+  };
+};
+
+const applyZoomFactor = (factor: number, anchor?: Vector) => {
+  renderer.setZoom(renderer.getZoom() * factor, anchor);
+  renderScene();
+  updateZoomUi();
+};
+
+renderScene();
+updateZoomUi();
 
 restartButton.addEventListener('click', () => {
   isDragging = false;
   dragOrigin = null;
   dragCurrent = null;
+  dragVector = null;
+  if (dragPointerId !== null) {
+    try {
+      canvas.releasePointerCapture(dragPointerId);
+    } catch (error) {
+      // ignore if pointer capture already released
+    }
+  }
+  dragPointerId = null;
+  stopPan();
   engine.startNewGame(currentMap, currentMode);
 });
 
 mapSelect.addEventListener('change', () => {
   currentMap = getMapById(mapSelect.value);
   renderer.setMap(currentMap);
+  applyStageAspect(currentMap);
   isDragging = false;
   dragOrigin = null;
   dragCurrent = null;
+  dragVector = null;
+  if (dragPointerId !== null) {
+    try {
+      canvas.releasePointerCapture(dragPointerId);
+    } catch (error) {
+      // ignore if pointer capture already released
+    }
+  }
+  dragPointerId = null;
+  stopPan();
+  updateZoomUi();
   engine.startNewGame(currentMap, currentMode);
 });
 
@@ -84,58 +159,213 @@ modeButtons.forEach((button) => {
   });
 });
 
-canvas.addEventListener('pointerdown', (event) => {
-  if (!engine.canPlayerAct()) return;
-  const pointer = toWorldPoint(event);
-  const activeUnit = getActiveUnit(currentState);
-  if (!activeUnit) return;
-  const distanceToUnit = Math.hypot(pointer.x - activeUnit.position.x, pointer.y - activeUnit.position.y);
-  if (distanceToUnit > activeUnit.def.radius + 12) return;
-
-  isDragging = true;
-  dragOrigin = { ...activeUnit.position };
-  dragCurrent = pointer;
+const beginPan = (event: PointerEvent) => {
+  isPanning = true;
+  panPointerId = event.pointerId;
+  panLast = { x: event.clientX, y: event.clientY };
   canvas.setPointerCapture(event.pointerId);
-  renderer.render(currentState, { dragOrigin, dragCurrent });
+  canvas.classList.add('pan-ready');
+  canvas.classList.add('pan-active');
+};
+
+const updateDragPreview = (event: PointerEvent) => {
+  if (!isDragging || !dragOrigin) return;
+  const pointerWorld = toWorldPoint(event);
+  const rawVector = {
+    x: dragOrigin.x - pointerWorld.x,
+    y: dragOrigin.y - pointerWorld.y,
+  };
+  const zoom = renderer.getZoom();
+  dragVector = {
+    x: rawVector.x * zoom * DRAG_INPUT_MULTIPLIER,
+    y: rawVector.y * zoom * DRAG_INPUT_MULTIPLIER,
+  };
+  dragCurrent = {
+    x: dragOrigin.x - dragVector.x,
+    y: dragOrigin.y - dragVector.y,
+  };
+  renderScene();
+};
+
+const updatePanFromPointer = (event: PointerEvent) => {
+  if (!isPanning || event.pointerId !== panPointerId || !panLast) return;
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return;
+  const view = renderer.getViewSize();
+  const deltaX = event.clientX - panLast.x;
+  const deltaY = event.clientY - panLast.y;
+  const worldDelta = {
+    x: (-deltaX / rect.width) * view.x,
+    y: (-deltaY / rect.height) * view.y,
+  };
+  panLast = { x: event.clientX, y: event.clientY };
+  renderer.panBy(worldDelta);
+  renderScene();
+};
+
+const stopPan = () => {
+  if (panPointerId !== null) {
+    try {
+      canvas.releasePointerCapture(panPointerId);
+    } catch (error) {
+      // ignore release errors if pointer capture is already cleared
+    }
+  }
+  isPanning = false;
+  panPointerId = null;
+  panLast = null;
+  canvas.classList.remove('pan-active');
+  if (!panKeyActive) {
+    canvas.classList.remove('pan-ready');
+  }
+};
+
+window.addEventListener('keydown', (event) => {
+  if (event.code !== 'Space' || panKeyActive) return;
+  const target = event.target as HTMLElement | null;
+  if (target && ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(target.tagName)) {
+    return;
+  }
+  panKeyActive = true;
+  canvas.classList.add('pan-ready');
+  event.preventDefault();
+});
+
+window.addEventListener('keyup', (event) => {
+  if (event.code !== 'Space') return;
+  panKeyActive = false;
+  if (!isPanning) {
+    canvas.classList.remove('pan-ready');
+  }
+});
+
+window.addEventListener('blur', () => {
+  panKeyActive = false;
+  if (!isPanning) {
+    canvas.classList.remove('pan-ready');
+  }
+});
+
+canvas.addEventListener('pointerdown', (event) => {
+  const wantsPanByButton = event.button === 1 || event.button === 2;
+  const wantsPanByModifier = panKeyActive && event.button === 0;
+  if (wantsPanByButton || wantsPanByModifier) {
+    event.preventDefault();
+    beginPan(event);
+    return;
+  }
+
+  if (event.button !== 0) {
+    return;
+  }
+
+  const pointer = toWorldPoint(event);
+  const canAct = engine.canPlayerAct();
+  const activeUnit = canAct ? getActiveUnit(currentState) : null;
+  if (canAct && activeUnit) {
+    const distanceToUnit = Math.hypot(pointer.x - activeUnit.position.x, pointer.y - activeUnit.position.y);
+    if (distanceToUnit <= activeUnit.def.radius + 12) {
+      isDragging = true;
+      dragOrigin = { ...activeUnit.position };
+      dragCurrent = { ...dragOrigin };
+      dragPointerId = event.pointerId;
+      dragVector = { x: 0, y: 0 };
+      canvas.setPointerCapture(event.pointerId);
+      renderScene();
+      return;
+    }
+  }
+
+  event.preventDefault();
+  beginPan(event);
 });
 
 canvas.addEventListener('pointermove', (event) => {
-  if (!isDragging) return;
-  dragCurrent = toWorldPoint(event);
-  renderer.render(currentState, { dragOrigin, dragCurrent });
+  if (isPanning && event.pointerId === panPointerId) {
+    updatePanFromPointer(event);
+    return;
+  }
+  if (!isDragging || event.pointerId !== dragPointerId) return;
+  updateDragPreview(event);
 });
 
-const endDrag = (event: PointerEvent) => {
-  if (!isDragging || !dragOrigin) return;
-  dragCurrent = toWorldPoint(event);
-  const actionVector = {
-    x: dragOrigin.x - dragCurrent.x,
-    y: dragOrigin.y - dragCurrent.y,
-  };
+const endDrag = (event: PointerEvent, cancel = false) => {
+  if (!isDragging || event.pointerId !== dragPointerId || !dragOrigin) return;
+  updateDragPreview(event);
+  const actionVector = dragVector ?? { x: 0, y: 0 };
   isDragging = false;
+  const pointerId = dragPointerId;
+  dragPointerId = null;
   dragOrigin = null;
   dragCurrent = null;
-  renderer.render(currentState);
-  engine.beginPlayerAction(actionVector);
+  dragVector = null;
+  if (pointerId !== null) {
+    try {
+      canvas.releasePointerCapture(pointerId);
+    } catch (error) {
+      // ignore if pointer capture already released
+    }
+  }
+  renderScene();
+  if (!cancel) {
+    engine.beginPlayerAction(actionVector);
+  }
 };
 
 canvas.addEventListener('pointerup', (event) => {
+  if (isPanning && event.pointerId === panPointerId) {
+    stopPan();
+    return;
+  }
   endDrag(event);
-  canvas.releasePointerCapture(event.pointerId);
 });
 
 canvas.addEventListener('pointercancel', (event) => {
-  endDrag(event);
-  canvas.releasePointerCapture(event.pointerId);
+  if (isPanning && event.pointerId === panPointerId) {
+    stopPan();
+    return;
+  }
+  endDrag(event, true);
 });
 
-function toWorldPoint(event: PointerEvent): Vector {
+canvas.addEventListener('wheel', (event) => {
+  event.preventDefault();
+  const anchor = toWorldPoint(event);
+  const factor = event.deltaY > 0 ? 1 / ZOOM_STEP : ZOOM_STEP;
+  applyZoomFactor(factor, anchor);
+});
+
+canvas.addEventListener('contextmenu', (event) => {
+  event.preventDefault();
+});
+
+zoomInButton.addEventListener('click', () => {
+  applyZoomFactor(ZOOM_STEP, getCameraCenter());
+});
+
+zoomOutButton.addEventListener('click', () => {
+  applyZoomFactor(1 / ZOOM_STEP, getCameraCenter());
+});
+
+zoomResetButton.addEventListener('click', () => {
+  renderer.resetCamera();
+  renderer.refreshViewport();
+  renderScene();
+  updateZoomUi();
+});
+
+function toWorldPoint(event: PointerEvent | WheelEvent): Vector {
   const rect = canvas.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) {
+    return { x: 0, y: 0 };
+  }
   const ratioX = (event.clientX - rect.left) / rect.width;
   const ratioY = (event.clientY - rect.top) / rect.height;
+  const offset = renderer.getOffset();
+  const view = renderer.getViewSize();
   return {
-    x: currentMap.width * ratioX,
-    y: currentMap.height * ratioY,
+    x: offset.x + view.x * ratioX,
+    y: offset.y + view.y * ratioY,
   };
 }
 
