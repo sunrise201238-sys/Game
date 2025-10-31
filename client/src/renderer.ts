@@ -100,8 +100,15 @@ export class Renderer {
     const { width, height } = this.map;
     const parent = this.canvas.parentElement as HTMLElement | null;
     const parentRect = parent?.getBoundingClientRect();
-    let availableWidth = parentRect?.width ?? this.canvas.clientWidth ?? width;
-    let availableHeight = parentRect?.height ?? this.canvas.clientHeight ?? height;
+    const computedStyle = parent ? window.getComputedStyle(parent) : null;
+    const paddingX = computedStyle
+      ? parseFloat(computedStyle.paddingLeft || '0') + parseFloat(computedStyle.paddingRight || '0')
+      : 0;
+    const paddingY = computedStyle
+      ? parseFloat(computedStyle.paddingTop || '0') + parseFloat(computedStyle.paddingBottom || '0')
+      : 0;
+    let availableWidth = (parentRect?.width ?? this.canvas.clientWidth ?? width) - paddingX;
+    let availableHeight = (parentRect?.height ?? this.canvas.clientHeight ?? height) - paddingY;
 
     if (!Number.isFinite(availableWidth) || availableWidth <= 0) {
       availableWidth = width;
