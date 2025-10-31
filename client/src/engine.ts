@@ -258,16 +258,10 @@ export class GameEngine {
       const unit = this.state.units.find((u) => u.id === unitId);
       if (!unit) continue;
       unit.alive = false;
-      const grave = this.state.graves.find((g) => distance(g.position, unit.position) < unit.def.radius * 0.75);
-      if (grave) {
-        grave.count += 1;
-      } else {
-        this.state.graves.push({
-          position: { ...unit.position },
-          team: unit.team,
-          count: 1,
-        });
-      }
+      this.state.graves.push({
+        position: { ...unit.position },
+        team: unit.team,
+      });
     }
     if (deaths.length) {
       this.state.statuses = this.state.statuses.filter((status) => !deaths.includes(status.unitId));
@@ -386,6 +380,7 @@ export class GameEngine {
     const maxSteps = Math.floor(GAME_CONSTANTS.maxSimulationSeconds / GAME_CONSTANTS.timeStep);
 
     for (let step = 0; step < maxSteps; step += 1) {
+      const collisionDamageMemory = new Set<string>();
       for (const clone of clones) {
         const currentVel = activeVelocities.get(clone.id);
         if (!currentVel) continue;
@@ -476,6 +471,10 @@ export class GameEngine {
             activeVelocities.set(clone.id, newVelA);
             activeVelocities.set(other.id, newVelB);
           } else if (moving) {
+            const blockKey = `${clone.id}->${other.id}`;
+            if (collisionDamageMemory.has(blockKey)) {
+              continue;
+            }
             if (!damagedUnits.has(other.id)) {
               other.hp = Math.max(0, other.hp - clone.def.collideDamage);
               if (other.hp === 0) {
@@ -488,6 +487,7 @@ export class GameEngine {
             activeVelocities.set(other.id, targetVel);
             const recoilVec = add(activeVelocities.get(clone.id) ?? { x: 0, y: 0 }, scale(dir, -clone.def.recoil));
             activeVelocities.set(clone.id, recoilVec);
+            collisionDamageMemory.add(`${other.id}->${clone.id}`);
           }
         }
       }
@@ -964,13 +964,24 @@ export class GameEngine {
       alive: true,
     });
 
-    this.loadout.forEach((unitId, index) => {
-      const def = getUnitDefinition(unitId);
-      const playerSpawn = this.ensureSafeSpawn(map.playerSpawns[index % map.playerSpawns.length], def.radius);
-      const botSpawn = this.ensureSafeSpawn(map.botSpawns[index % map.botSpawns.length], def.radius);
-      units.push(createUnit(def, PLAYER_TEAM, playerSpawn, index));
-      units.push(createUnit(def, BOT_TEAM, botSpawn, index));
-    });
+    const playerLoadout = map.teamLoadouts?.[PLAYER_TEAM] ?? this.loadout;
+    const botLoadout = map.teamLoadouts?.[BOT_TEAM] ?? this.loadout;
+    const maxSlots = Math.max(playerLoadout.length, botLoadout.length);
+
+    for (let index = 0; index < maxSlots; index += 1) {
+      if (index < playerLoadout.length) {
+        const unitId = playerLoadout[index];
+        const def = getUnitDefinition(unitId);
+        const spawn = this.ensureSafeSpawn(map.playerSpawns[index % map.playerSpawns.length], def.radius);
+        units.push(createUnit(def, PLAYER_TEAM, spawn, index));
+      }
+      if (index < botLoadout.length) {
+        const unitId = botLoadout[index];
+        const def = getUnitDefinition(unitId);
+        const spawn = this.ensureSafeSpawn(map.botSpawns[index % map.botSpawns.length], def.radius);
+        units.push(createUnit(def, BOT_TEAM, spawn, index));
+      }
+    }
 
     const orderPlayer = this.createOrder(units, PLAYER_TEAM);
     const orderBot = this.createOrder(units, BOT_TEAM);
