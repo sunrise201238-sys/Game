@@ -4,7 +4,7 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
   {
     id: 'soldier',
     name: 'Soldier',
-    color: '#f94144',
+    color: '#2563eb',
     radius: 16,
     maxHp: 120,
     collideDamage: 28,
@@ -24,6 +24,8 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
     recoil: 90,
     resistance: 0.55,
     maxPower: 340,
+    aimCurveExponent: 4.5,
+    aimCurveSmoothing: 0.03,
     projectile: {
       speed: 720,
       radius: 6,
@@ -71,8 +73,8 @@ export const MAPS: MapDefinition[] = [
     id: 'training-grounds',
     name: 'Training Grounds',
     description: 'Open field with no hazards — perfect for fundamentals.',
-    width: 960,
-    height: 540,
+    width: 1024,
+    height: 576,
     lakes: [],
     walls: [],
     playerSpawns: [
@@ -96,8 +98,8 @@ export const MAPS: MapDefinition[] = [
     id: 'balanced-basin',
     name: 'Balanced Basin',
     description: 'Symmetrical arena with central lake and offset walls.',
-    width: 960,
-    height: 540,
+    width: 1024,
+    height: 576,
     lakes: [
       { x: 430, y: 210, width: 100, height: 120 },
     ],
@@ -126,8 +128,8 @@ export const MAPS: MapDefinition[] = [
     id: 'river-pass',
     name: 'River Pass',
     description: 'A narrow river slices the arena with staggered cover.',
-    width: 960,
-    height: 540,
+    width: 1024,
+    height: 576,
     lakes: [
       { x: 440, y: 0, width: 80, height: 540 },
     ],
@@ -158,8 +160,8 @@ export const MAPS: MapDefinition[] = [
     id: 'cinder-ledge',
     name: 'Cinder Ledge',
     description: 'Twin lava pits guard the center with tight approach lanes.',
-    width: 960,
-    height: 540,
+    width: 1024,
+    height: 576,
     lakes: [
       { x: 360, y: 160, width: 80, height: 90 },
       { x: 520, y: 300, width: 80, height: 90 },
@@ -190,8 +192,8 @@ export const MAPS: MapDefinition[] = [
     id: 'twin-bridge',
     name: 'Twin Bridge',
     description: 'A single stone bridge cuts between twin basins — fights bottleneck at the center span.',
-    width: 960,
-    height: 540,
+    width: 1024,
+    height: 576,
     lakes: [
       { x: 220, y: 40, width: 520, height: 160 },
       { x: 220, y: 340, width: 520, height: 160 },

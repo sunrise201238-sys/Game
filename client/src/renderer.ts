@@ -226,34 +226,50 @@ export class Renderer {
 
     const dragVector = { x: dragOrigin.x - dragCurrent.x, y: dragOrigin.y - dragCurrent.y };
     const dragDistance = Math.hypot(dragVector.x, dragVector.y);
-    if (dragDistance < 2) return;
+    if (dragDistance < 0.5) return;
 
-    const clampedPower = Math.min(activeUnit.def.maxPower, dragDistance);
+    const maxPower = activeUnit.def.maxPower;
+    if (maxPower <= 0) return;
+
     const launchDir = normalize(dragVector);
-    let previewDistance = clampedPower * 1.2;
+    const basePower = Math.min(maxPower, dragDistance);
+    const aimCurveExponent = activeUnit.def.aimCurveExponent ?? 1;
+    const aimCurveSmoothing = Math.min(Math.max(activeUnit.def.aimCurveSmoothing ?? 0, 0), 0.5);
+    const normalizedPower = basePower / maxPower;
+    const curvedPower =
+      aimCurveExponent === 1 ? normalizedPower : Math.pow(normalizedPower, Math.max(aimCurveExponent, 1e-3));
+    const smoothedPower =
+      aimCurveSmoothing > 0 ? curvedPower + aimCurveSmoothing * (normalizedPower - curvedPower) : curvedPower;
+    const clampedPower = smoothedPower * maxPower;
+    const projectileSpec = activeUnit.def.projectile;
+    const previewScale = projectileSpec?.previewScale ?? 1.2;
+    const previewDistance = clampedPower * previewScale;
+    const cappedPreviewDistance = projectileSpec
+      ? Math.min(projectileSpec.maxDistance, previewDistance)
+      : previewDistance;
+    const previewEnd = addVectors(dragOrigin, scale(launchDir, cappedPreviewDistance));
+
+    let tipDistance = cappedPreviewDistance;
     let extensionEnd: Vector | null = null;
-    if (activeUnit.def.projectile) {
-      const { maxDistance, previewScale, previewExtension } = activeUnit.def.projectile;
-      const scale = previewScale ?? 1.2;
-      previewDistance = Math.min(maxDistance, clampedPower * scale);
-      if (previewExtension && previewExtension > 0) {
-        const allowable = Math.max(0, maxDistance - previewDistance);
-        const extensionLength = Math.min(previewExtension, allowable);
-        if (extensionLength > 1) {
-          extensionEnd = addVectors(
-            dragOrigin,
-            scale(launchDir, previewDistance + extensionLength)
-          );
-        }
+    if (projectileSpec) {
+      const maxDistance = projectileSpec.maxDistance;
+      const remaining = Math.max(0, maxDistance - cappedPreviewDistance);
+      const requestedExtension = projectileSpec.previewExtension ?? 0;
+      const extensionLength = Math.min(requestedExtension, remaining);
+      if (extensionLength > 1) {
+        tipDistance += extensionLength;
+        extensionEnd = addVectors(previewEnd, scale(launchDir, extensionLength));
+      } else {
+        tipDistance = Math.min(tipDistance, maxDistance);
       }
     }
-    const previewEnd = addVectors(dragOrigin, scale(launchDir, previewDistance));
+    const aimTip = extensionEnd ?? previewEnd;
 
     const { ctx } = this;
     ctx.save();
 
-    const hasProjectile = Boolean(activeUnit.def.projectile);
-    const projectileColor = activeUnit.def.projectile?.color;
+    const hasProjectile = Boolean(projectileSpec);
+    const projectileColor = projectileSpec?.color;
     const baseStroke = projectileColor
       ? this.replaceAlpha(projectileColor, 0.98)
       : state.activeTeam === 0
@@ -266,12 +282,10 @@ export class Renderer {
         : 'rgba(252,211,77,0.75)';
     const accent = '#ffffff';
 
-    const actualEnd = extensionEnd ?? previewEnd;
-    const actualDistance = Math.hypot(actualEnd.x - dragOrigin.x, actualEnd.y - dragOrigin.y);
     const longDistance = hasProjectile
-      ? this.computeAimGuideLength(dragOrigin, launchDir, actualDistance)
-      : actualDistance;
-    const longEnd = hasProjectile ? addVectors(dragOrigin, scale(launchDir, longDistance)) : actualEnd;
+      ? this.computeAimGuideLength(dragOrigin, launchDir, tipDistance)
+      : tipDistance;
+    const longEnd = hasProjectile ? addVectors(dragOrigin, scale(launchDir, longDistance)) : aimTip;
 
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
@@ -331,8 +345,7 @@ export class Renderer {
 
     ctx.setLineDash([]);
 
-    const arrowTarget = extensionEnd ?? previewEnd;
-    const primaryTip = addVectors(arrowTarget, scale(launchDir, 14));
+    const primaryTip = addVectors(aimTip, scale(launchDir, 14));
     this.drawArrowHead(primaryTip, launchDir, 14, baseStroke, 1, glowColor, 18);
 
     if (hasProjectile) {
@@ -513,7 +526,7 @@ export class Renderer {
 
     ctx.beginPath();
     ctx.fillStyle = coreColor;
-    ctx.arc(0, 0, Math.max(4, radius * 0.35), 0, Math.PI * 2);
+    ctx.arc(0, 0, Math.max(3, radius * 0.28), 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }

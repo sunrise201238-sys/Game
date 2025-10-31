@@ -39,6 +39,8 @@ export interface UnitDefinition {
   recoil: number;
   resistance: number;
   maxPower: number;
+  aimCurveExponent?: number;
+  aimCurveSmoothing?: number;
   projectile?: ProjectileSpec;
   aoe?: AoeSpec;
 }
