@@ -22,7 +22,9 @@ const zoomInButton = document.getElementById('zoom-in') as HTMLButtonElement;
 const zoomOutButton = document.getElementById('zoom-out') as HTMLButtonElement;
 const zoomResetButton = document.getElementById('zoom-reset') as HTMLButtonElement;
 const zoomIndicator = document.getElementById('zoom-indicator') as HTMLSpanElement;
+const appRoot = document.getElementById('app') as HTMLElement;
 const ZOOM_STEP = 1.2;
+const DRAG_INPUT_MULTIPLIER = 1.35;
 
 let currentMap = getMapById(DEFAULT_MAP_ID);
 let currentMode: GameMode = 'bot';
@@ -36,6 +38,7 @@ for (const map of MAPS) {
 mapSelect.value = currentMap.id;
 
 const renderer = new Renderer(canvas, currentMap);
+const zoomLimits = renderer.getZoomLimits();
 
 let currentState: GameState;
 let isDragging = false;
@@ -69,7 +72,7 @@ const engine = new GameEngine({
       currentMap = getMapById(state.mapId);
       renderer.setMap(currentMap);
       mapSelect.value = currentMap.id;
-      updateZoomIndicator();
+      updateZoomUi();
     }
     currentState = state;
     updateUi(state);
@@ -96,6 +99,12 @@ const updateFullscreenButton = () => {
   const active = isFullscreenActive();
   fullscreenButton.textContent = active ? 'Exit Fullscreen' : 'Fullscreen';
   fullscreenButton.setAttribute('aria-pressed', active ? 'true' : 'false');
+};
+
+const syncFullscreenUi = () => {
+  const active = isFullscreenActive();
+  document.body.classList.toggle('fullscreen-active', active);
+  appRoot.classList.toggle('fullscreen-active', active);
 };
 
 const requestNativeFullscreen = (): Promise<void> | null => {
@@ -154,6 +163,7 @@ const enterPseudoFullscreen = () => {
   document.body.classList.add('pseudo-fullscreen-active');
   boardWrapper.classList.add('pseudo-fullscreen');
   updateFullscreenButton();
+  syncFullscreenUi();
   renderer.refreshViewport();
   renderScene();
 };
@@ -164,13 +174,19 @@ const exitPseudoFullscreen = () => {
   document.body.classList.remove('pseudo-fullscreen-active');
   boardWrapper.classList.remove('pseudo-fullscreen');
   updateFullscreenButton();
+  syncFullscreenUi();
   renderer.refreshViewport();
   renderScene();
 };
 
-const updateZoomIndicator = () => {
-  const percent = Math.round(renderer.getZoom() * 100);
+const updateZoomUi = () => {
+  const zoom = renderer.getZoom();
+  const percent = Math.round(zoom * 100);
   zoomIndicator.textContent = `${percent}%`;
+  const minThreshold = zoomLimits.min + 0.01;
+  const maxThreshold = zoomLimits.max - 0.01;
+  zoomOutButton.disabled = zoom <= minThreshold;
+  zoomInButton.disabled = zoom >= maxThreshold;
 };
 
 const getCameraCenter = (): Vector => {
@@ -185,12 +201,13 @@ const getCameraCenter = (): Vector => {
 const applyZoomFactor = (factor: number, anchor?: Vector) => {
   renderer.setZoom(renderer.getZoom() * factor, anchor);
   renderScene();
-  updateZoomIndicator();
+  updateZoomUi();
 };
 
 renderScene();
-updateZoomIndicator();
+updateZoomUi();
 updateFullscreenButton();
+syncFullscreenUi();
 
 restartButton.addEventListener('click', () => {
   isDragging = false;
@@ -225,7 +242,7 @@ mapSelect.addEventListener('change', () => {
   }
   dragPointerId = null;
   stopPan();
-  updateZoomIndicator();
+  updateZoomUi();
   engine.startNewGame(currentMap, currentMode);
 });
 
@@ -257,8 +274,8 @@ const updateDragPreview = (event: PointerEvent) => {
   };
   const zoom = renderer.getZoom();
   dragVector = {
-    x: rawVector.x * zoom,
-    y: rawVector.y * zoom,
+    x: rawVector.x * zoom * DRAG_INPUT_MULTIPLIER,
+    y: rawVector.y * zoom * DRAG_INPUT_MULTIPLIER,
   };
   dragCurrent = {
     x: dragOrigin.x - dragVector.x,
@@ -438,7 +455,7 @@ zoomResetButton.addEventListener('click', () => {
   renderer.resetCamera();
   renderer.refreshViewport();
   renderScene();
-  updateZoomIndicator();
+  updateZoomUi();
 });
 
 fullscreenButton.addEventListener('click', () => {
@@ -470,6 +487,7 @@ fullscreenButton.addEventListener('click', () => {
 
 document.addEventListener('fullscreenchange', () => {
   updateFullscreenButton();
+  syncFullscreenUi();
   renderer.refreshViewport();
   renderScene();
 });
@@ -478,6 +496,7 @@ document.addEventListener('fullscreenerror', () => {
   if (!pseudoFullscreen) {
     enterPseudoFullscreen();
   }
+  syncFullscreenUi();
 });
 
 function toWorldPoint(event: PointerEvent | WheelEvent): Vector {

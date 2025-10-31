@@ -60,8 +60,10 @@ export class Renderer {
   private baseScale = 1;
   private zoom = 1;
   private offset: Vector = { x: 0, y: 0 };
-  private readonly minZoom = 0.6;
+  private readonly minZoom = 1;
   private readonly maxZoom = 2.5;
+  private resizeObserver: ResizeObserver | null = null;
+  private pendingResizeFrame: number | null = null;
 
   constructor(canvas: HTMLCanvasElement, map: MapDefinition) {
     const ctx = canvas.getContext('2d');
@@ -74,16 +76,24 @@ export class Renderer {
     this.resetCamera();
     this.updateCanvasSize();
     window.addEventListener('resize', () => this.handleResize());
+    this.observeParent();
   }
 
   setMap(map: MapDefinition): void {
     this.map = map;
     this.resetCamera();
     this.updateCanvasSize();
+    this.observeParent();
   }
 
   private handleResize(): void {
-    this.updateCanvasSize();
+    if (this.pendingResizeFrame !== null) {
+      window.cancelAnimationFrame(this.pendingResizeFrame);
+    }
+    this.pendingResizeFrame = window.requestAnimationFrame(() => {
+      this.pendingResizeFrame = null;
+      this.updateCanvasSize();
+    });
   }
 
   private updateCanvasSize(): void {
@@ -131,6 +141,10 @@ export class Renderer {
     return this.zoom;
   }
 
+  getZoomLimits(): { min: number; max: number } {
+    return { min: this.minZoom, max: this.maxZoom };
+  }
+
   getViewSize(): Vector {
     return { x: this.map.width / this.zoom, y: this.map.height / this.zoom };
   }
@@ -164,6 +178,22 @@ export class Renderer {
 
   refreshViewport(): void {
     this.updateCanvasSize();
+  }
+
+  private observeParent(): void {
+    if (typeof ResizeObserver === 'undefined') {
+      return;
+    }
+    const parent = this.canvas.parentElement;
+    if (!parent) {
+      return;
+    }
+    if (!this.resizeObserver) {
+      this.resizeObserver = new ResizeObserver(() => this.handleResize());
+    } else {
+      this.resizeObserver.disconnect();
+    }
+    this.resizeObserver.observe(parent);
   }
 
   private clampOffsetForZoom(offset: Vector, zoom: number): Vector {
