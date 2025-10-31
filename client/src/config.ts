@@ -198,10 +198,7 @@ export const MAPS: MapDefinition[] = [
       { x: 220, y: 40, width: 520, height: 160 },
       { x: 220, y: 340, width: 520, height: 160 },
     ],
-    walls: [
-      { x: 170, y: 60, width: 60, height: 360 },
-      { x: 730, y: 60, width: 60, height: 360 },
-    ],
+    walls: [],
     playerSpawns: [
       { x: 140, y: 120 },
       { x: 190, y: 210 },
