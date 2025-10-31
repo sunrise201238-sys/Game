@@ -386,6 +386,7 @@ export class GameEngine {
     const maxSteps = Math.floor(GAME_CONSTANTS.maxSimulationSeconds / GAME_CONSTANTS.timeStep);
 
     for (let step = 0; step < maxSteps; step += 1) {
+      const collisionDamageMemory = new Set<string>();
       for (const clone of clones) {
         const currentVel = activeVelocities.get(clone.id);
         if (!currentVel) continue;
@@ -476,6 +477,10 @@ export class GameEngine {
             activeVelocities.set(clone.id, newVelA);
             activeVelocities.set(other.id, newVelB);
           } else if (moving) {
+            const blockKey = `${clone.id}->${other.id}`;
+            if (collisionDamageMemory.has(blockKey)) {
+              continue;
+            }
             if (!damagedUnits.has(other.id)) {
               other.hp = Math.max(0, other.hp - clone.def.collideDamage);
               if (other.hp === 0) {
@@ -488,6 +493,7 @@ export class GameEngine {
             activeVelocities.set(other.id, targetVel);
             const recoilVec = add(activeVelocities.get(clone.id) ?? { x: 0, y: 0 }, scale(dir, -clone.def.recoil));
             activeVelocities.set(clone.id, recoilVec);
+            collisionDamageMemory.add(`${other.id}->${clone.id}`);
           }
         }
       }
