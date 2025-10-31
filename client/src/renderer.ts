@@ -156,9 +156,10 @@ export class Renderer {
           state.phase !== 'ended'
       );
 
-      const fillColor = this.lightenColor(unit.def.color, unit.team === 0 ? 0.1 : -0.05);
+      const baseColor = this.getUnitBaseColor(unit);
+      const fillColor = this.lightenColor(baseColor, unit.team === 0 ? 0.1 : -0.05);
       const strokeColor = isHighlight ? highlightStroke[unit.team] ?? '#ffffff' : teamStroke[unit.team] ?? '#ffffff';
-      const centerColor = teamCore[unit.team] ?? 'rgba(255,255,255,0.8)';
+      const centerColor = this.getUnitCoreColor(unit, teamCore);
       const lineWidth = isHighlight ? 4 : 3;
 
       this.drawUnitShape(unit, fillColor, strokeColor, centerColor, lineWidth, isHighlight);
@@ -238,8 +239,8 @@ export class Renderer {
     const normalizedPower = basePower / maxPower;
     const curvedPower =
       aimCurveExponent === 1 ? normalizedPower : Math.pow(normalizedPower, Math.max(aimCurveExponent, 1e-3));
-    const smoothedPower =
-      aimCurveSmoothing > 0 ? curvedPower + aimCurveSmoothing * (normalizedPower - curvedPower) : curvedPower;
+    const smoothingFactor = aimCurveSmoothing > 0 ? 1 : 0;
+    const smoothedPower = curvedPower + smoothingFactor * (normalizedPower - curvedPower);
     const clampedPower = smoothedPower * maxPower;
     const projectileSpec = activeUnit.def.projectile;
     const previewScale = projectileSpec?.previewScale ?? 1.2;
@@ -597,6 +598,20 @@ export class Renderer {
       x: point.x * cos - point.y * sin,
       y: point.x * sin + point.y * cos,
     };
+  }
+
+  private getUnitBaseColor(unit: UnitState): string {
+    if (unit.def.id === 'soldier' && unit.team === 1) {
+      return '#dc2626';
+    }
+    return unit.def.color;
+  }
+
+  private getUnitCoreColor(unit: UnitState, defaultCore: Record<TeamId, string>): string {
+    if (unit.def.id === 'mage' && unit.team === 1) {
+      return '#2563eb';
+    }
+    return defaultCore[unit.team] ?? 'rgba(255,255,255,0.8)';
   }
 
   private parseColor(input: string): { r: number; g: number; b: number } {
