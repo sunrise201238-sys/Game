@@ -11,6 +11,38 @@ import type {
   TeamId,
 } from './types';
 
+type UnitColorPalette = Partial<Record<string, string>> & { default: string };
+
+const TEAM_UNIT_BASE_COLORS: Record<TeamId, UnitColorPalette> = {
+  0: {
+    default: '#2563eb',
+    soldier: '#1d4ed8',
+    archer: '#2563eb',
+    mage: '#38bdf8',
+  },
+  1: {
+    default: '#ea580c',
+    soldier: '#dc2626',
+    archer: '#f97316',
+    mage: '#f97316',
+  },
+};
+
+const TEAM_UNIT_CORE_COLORS: Record<TeamId, UnitColorPalette> = {
+  0: {
+    default: 'rgba(96,165,250,0.95)',
+    soldier: 'rgba(96,165,250,0.95)',
+    archer: 'rgba(129,199,255,0.95)',
+    mage: 'rgba(125,211,252,0.95)',
+  },
+  1: {
+    default: 'rgba(249,115,22,0.95)',
+    soldier: 'rgba(248,113,113,0.95)',
+    archer: 'rgba(249,115,22,0.95)',
+    mage: 'rgba(251,146,60,0.95)',
+  },
+};
+
 interface RenderOptions {
   dragOrigin?: Vector | null;
   dragCurrent?: Vector | null;
@@ -132,7 +164,7 @@ export class Renderer {
       1: '#f97316',
     };
     const teamCore: Record<TeamId, string> = {
-      0: 'rgba(56,189,248,0.95)',
+      0: 'rgba(96,165,250,0.95)',
       1: 'rgba(249,115,22,0.95)',
     };
     const highlightStroke: Record<TeamId, string> = {
@@ -601,17 +633,13 @@ export class Renderer {
   }
 
   private getUnitBaseColor(unit: UnitState): string {
-    if (unit.def.id === 'soldier' && unit.team === 1) {
-      return '#dc2626';
-    }
-    return unit.def.color;
+    const palette = TEAM_UNIT_BASE_COLORS[unit.team];
+    return palette?.[unit.def.id] ?? palette?.default ?? unit.def.color;
   }
 
   private getUnitCoreColor(unit: UnitState, defaultCore: Record<TeamId, string>): string {
-    if (unit.def.id === 'mage' && unit.team === 1) {
-      return '#2563eb';
-    }
-    return defaultCore[unit.team] ?? 'rgba(255,255,255,0.8)';
+    const palette = TEAM_UNIT_CORE_COLORS[unit.team];
+    return palette?.[unit.def.id] ?? palette?.default ?? defaultCore[unit.team] ?? 'rgba(255,255,255,0.8)';
   }
 
   private parseColor(input: string): { r: number; g: number; b: number } {
