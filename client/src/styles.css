@@ -14,6 +14,10 @@ body {
   align-items: stretch;
 }
 
+body.pseudo-fullscreen-active {
+  overflow: hidden;
+}
+
 #app {
   display: flex;
   flex-direction: column;
@@ -221,6 +225,7 @@ main {
 }
 
 #gameCanvas {
+  display: block;
   width: 100%;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -235,7 +240,8 @@ main {
   cursor: grabbing;
 }
 
-#board-wrapper:fullscreen {
+#board-wrapper:fullscreen,
+#board-wrapper.pseudo-fullscreen {
   width: 100vw;
   height: 100vh;
   max-width: none;
@@ -243,10 +249,28 @@ main {
   border-radius: 0;
   border: none;
   box-sizing: border-box;
+  padding: 1rem;
+  padding-top: calc(1rem + constant(safe-area-inset-top));
+  padding-bottom: calc(1rem + constant(safe-area-inset-bottom));
+  padding-left: calc(1rem + constant(safe-area-inset-left));
+  padding-right: calc(1rem + constant(safe-area-inset-right));
+  padding-top: calc(1rem + env(safe-area-inset-top));
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  padding-left: calc(1rem + env(safe-area-inset-left));
+  padding-right: calc(1rem + env(safe-area-inset-right));
+  background: rgba(11, 19, 43, 0.98);
 }
 
-#board-wrapper:fullscreen canvas {
+#board-wrapper.pseudo-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+}
+
+#board-wrapper:fullscreen canvas,
+#board-wrapper.pseudo-fullscreen canvas {
   max-width: none;
+  max-height: none;
 }
 
 #team-panels {

@@ -88,11 +88,23 @@ export class Renderer {
 
   private updateCanvasSize(): void {
     const { width, height } = this.map;
-    const rect = this.canvas.getBoundingClientRect();
-    const scaleRatio = Math.min(rect.width / width, rect.height / height) || 1;
-    this.baseScale = scaleRatio;
-    const targetWidth = width * scaleRatio;
-    const targetHeight = height * scaleRatio;
+    const parent = this.canvas.parentElement as HTMLElement | null;
+    const parentRect = parent?.getBoundingClientRect();
+    let availableWidth = parentRect?.width ?? this.canvas.clientWidth ?? width;
+    let availableHeight = parentRect?.height ?? this.canvas.clientHeight ?? height;
+
+    if (!Number.isFinite(availableWidth) || availableWidth <= 0) {
+      availableWidth = width;
+    }
+    if (!Number.isFinite(availableHeight) || availableHeight <= 0) {
+      availableHeight = (availableWidth / width) * height;
+    }
+
+    const scaleRatio = Math.min(availableWidth / width, availableHeight / height);
+    const safeScale = Number.isFinite(scaleRatio) && scaleRatio > 0 ? scaleRatio : 1;
+    this.baseScale = safeScale;
+    const targetWidth = width * safeScale;
+    const targetHeight = height * safeScale;
     this.canvas.width = targetWidth * this.dpr;
     this.canvas.height = targetHeight * this.dpr;
     this.canvas.style.width = `${targetWidth}px`;

@@ -46,6 +46,21 @@ let isPanning = false;
 let panPointerId: number | null = null;
 let panLast: { x: number; y: number } | null = null;
 let panKeyActive = false;
+let pseudoFullscreen = false;
+
+type VendorFullscreenElement = HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void>;
+};
+
+type VendorFullscreenDocument = Document & {
+  webkitExitFullscreen?: () => Promise<void>;
+};
+
+const fullscreenElement = boardWrapper as VendorFullscreenElement;
+const fullscreenDocument = document as VendorFullscreenDocument;
+const hasNativeFullscreen =
+  typeof fullscreenElement.requestFullscreen === 'function' ||
+  typeof fullscreenElement.webkitRequestFullscreen === 'function';
 
 const engine = new GameEngine({
   onState: (state) => {
@@ -73,6 +88,85 @@ const renderScene = () => {
   });
 };
 
+const isNativeFullscreenActive = () => document.fullscreenElement === boardWrapper;
+const isFullscreenActive = () => isNativeFullscreenActive() || pseudoFullscreen;
+
+const updateFullscreenButton = () => {
+  const active = isFullscreenActive();
+  fullscreenButton.textContent = active ? 'Exit Fullscreen' : 'Fullscreen';
+  fullscreenButton.setAttribute('aria-pressed', active ? 'true' : 'false');
+};
+
+const requestNativeFullscreen = (): Promise<void> | null => {
+  if (typeof fullscreenElement.requestFullscreen === 'function') {
+    try {
+      const result = fullscreenElement.requestFullscreen();
+      if (result && typeof (result as Promise<void>).then === 'function') {
+        return result as Promise<void>;
+      }
+      return Promise.resolve();
+    } catch (error) {
+      return Promise.reject(error as Error);
+    }
+  }
+  if (typeof fullscreenElement.webkitRequestFullscreen === 'function') {
+    return new Promise<void>((resolve, reject) => {
+      try {
+        fullscreenElement.webkitRequestFullscreen!();
+        resolve();
+      } catch (error) {
+        reject(error as Error);
+      }
+    });
+  }
+  return null;
+};
+
+const exitNativeFullscreen = (): Promise<void> | null => {
+  if (typeof fullscreenDocument.exitFullscreen === 'function') {
+    try {
+      const result = fullscreenDocument.exitFullscreen();
+      if (result && typeof (result as Promise<void>).then === 'function') {
+        return result as Promise<void>;
+      }
+      return Promise.resolve();
+    } catch (error) {
+      return Promise.reject(error as Error);
+    }
+  }
+  if (typeof fullscreenDocument.webkitExitFullscreen === 'function') {
+    return new Promise<void>((resolve, reject) => {
+      try {
+        fullscreenDocument.webkitExitFullscreen!();
+        resolve();
+      } catch (error) {
+        reject(error as Error);
+      }
+    });
+  }
+  return null;
+};
+
+const enterPseudoFullscreen = () => {
+  if (pseudoFullscreen) return;
+  pseudoFullscreen = true;
+  document.body.classList.add('pseudo-fullscreen-active');
+  boardWrapper.classList.add('pseudo-fullscreen');
+  updateFullscreenButton();
+  renderer.refreshViewport();
+  renderScene();
+};
+
+const exitPseudoFullscreen = () => {
+  if (!pseudoFullscreen) return;
+  pseudoFullscreen = false;
+  document.body.classList.remove('pseudo-fullscreen-active');
+  boardWrapper.classList.remove('pseudo-fullscreen');
+  updateFullscreenButton();
+  renderer.refreshViewport();
+  renderScene();
+};
+
 const updateZoomIndicator = () => {
   const percent = Math.round(renderer.getZoom() * 100);
   zoomIndicator.textContent = `${percent}%`;
@@ -95,6 +189,7 @@ const applyZoomFactor = (factor: number, anchor?: Vector) => {
 
 renderScene();
 updateZoomIndicator();
+updateFullscreenButton();
 
 restartButton.addEventListener('click', () => {
   isDragging = false;
@@ -194,6 +289,13 @@ window.addEventListener('keydown', (event) => {
   event.preventDefault();
 });
 
+window.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  if (pseudoFullscreen && !isNativeFullscreenActive()) {
+    exitPseudoFullscreen();
+  }
+});
+
 window.addEventListener('keyup', (event) => {
   if (event.code !== 'Space') return;
   panKeyActive = false;
@@ -210,29 +312,36 @@ window.addEventListener('blur', () => {
 });
 
 canvas.addEventListener('pointerdown', (event) => {
-  const wantsPan =
-    event.button === 1 ||
-    event.button === 2 ||
-    (panKeyActive && event.button === 0);
-  if (wantsPan) {
+  const wantsPanByButton = event.button === 1 || event.button === 2;
+  const wantsPanByModifier = panKeyActive && event.button === 0;
+  if (wantsPanByButton || wantsPanByModifier) {
     event.preventDefault();
     beginPan(event);
     return;
   }
-  if (event.button !== 0) return;
-  if (!engine.canPlayerAct()) return;
-  const pointer = toWorldPoint(event);
-  const activeUnit = getActiveUnit(currentState);
-  if (!activeUnit) return;
-  const distanceToUnit = Math.hypot(pointer.x - activeUnit.position.x, pointer.y - activeUnit.position.y);
-  if (distanceToUnit > activeUnit.def.radius + 12) return;
 
-  isDragging = true;
-  dragOrigin = { ...activeUnit.position };
-  dragCurrent = pointer;
-  dragPointerId = event.pointerId;
-  canvas.setPointerCapture(event.pointerId);
-  renderScene();
+  if (event.button !== 0) {
+    return;
+  }
+
+  const pointer = toWorldPoint(event);
+  const canAct = engine.canPlayerAct();
+  const activeUnit = canAct ? getActiveUnit(currentState) : null;
+  if (canAct && activeUnit) {
+    const distanceToUnit = Math.hypot(pointer.x - activeUnit.position.x, pointer.y - activeUnit.position.y);
+    if (distanceToUnit <= activeUnit.def.radius + 12) {
+      isDragging = true;
+      dragOrigin = { ...activeUnit.position };
+      dragCurrent = pointer;
+      dragPointerId = event.pointerId;
+      canvas.setPointerCapture(event.pointerId);
+      renderScene();
+      return;
+    }
+  }
+
+  event.preventDefault();
+  beginPan(event);
 });
 
 canvas.addEventListener('pointermove', (event) => {
@@ -313,18 +422,42 @@ zoomResetButton.addEventListener('click', () => {
 });
 
 fullscreenButton.addEventListener('click', () => {
-  if (document.fullscreenElement === boardWrapper) {
-    document.exitFullscreen().catch(() => undefined);
-  } else {
-    boardWrapper.requestFullscreen().catch(() => undefined);
+  if (isNativeFullscreenActive()) {
+    const result = exitNativeFullscreen();
+    if (result) {
+      result.catch(() => undefined);
+    }
+    return;
   }
+
+  if (pseudoFullscreen) {
+    exitPseudoFullscreen();
+    return;
+  }
+
+  if (hasNativeFullscreen) {
+    const result = requestNativeFullscreen();
+    if (result) {
+      result.catch(() => {
+        enterPseudoFullscreen();
+      });
+      return;
+    }
+  }
+
+  enterPseudoFullscreen();
 });
 
 document.addEventListener('fullscreenchange', () => {
-  const isFullscreen = document.fullscreenElement === boardWrapper;
-  fullscreenButton.textContent = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
+  updateFullscreenButton();
   renderer.refreshViewport();
   renderScene();
+});
+
+document.addEventListener('fullscreenerror', () => {
+  if (!pseudoFullscreen) {
+    enterPseudoFullscreen();
+  }
 });
 
 function toWorldPoint(event: PointerEvent | WheelEvent): Vector {
