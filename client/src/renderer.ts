@@ -107,8 +107,15 @@ export class Renderer {
     const paddingY = computedStyle
       ? parseFloat(computedStyle.paddingTop || '0') + parseFloat(computedStyle.paddingBottom || '0')
       : 0;
-    let availableWidth = (parentRect?.width ?? this.canvas.clientWidth ?? width) - paddingX;
-    let availableHeight = (parentRect?.height ?? this.canvas.clientHeight ?? height) - paddingY;
+    const borderX = computedStyle
+      ? parseFloat(computedStyle.borderLeftWidth || '0') + parseFloat(computedStyle.borderRightWidth || '0')
+      : 0;
+    const borderY = computedStyle
+      ? parseFloat(computedStyle.borderTopWidth || '0') + parseFloat(computedStyle.borderBottomWidth || '0')
+      : 0;
+
+    let availableWidth = (parentRect?.width ?? this.canvas.clientWidth ?? width) - paddingX - borderX;
+    let availableHeight = (parentRect?.height ?? this.canvas.clientHeight ?? height) - paddingY - borderY;
 
     if (!Number.isFinite(availableWidth) || availableWidth <= 0) {
       availableWidth = width;
