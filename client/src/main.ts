@@ -42,6 +42,7 @@ let isDragging = false;
 let dragOrigin: Vector | null = null;
 let dragCurrent: Vector | null = null;
 let dragPointerId: number | null = null;
+let dragVector: Vector | null = null;
 let isPanning = false;
 let panPointerId: number | null = null;
 let panLast: { x: number; y: number } | null = null;
@@ -195,6 +196,7 @@ restartButton.addEventListener('click', () => {
   isDragging = false;
   dragOrigin = null;
   dragCurrent = null;
+  dragVector = null;
   if (dragPointerId !== null) {
     try {
       canvas.releasePointerCapture(dragPointerId);
@@ -213,6 +215,7 @@ mapSelect.addEventListener('change', () => {
   isDragging = false;
   dragOrigin = null;
   dragCurrent = null;
+  dragVector = null;
   if (dragPointerId !== null) {
     try {
       canvas.releasePointerCapture(dragPointerId);
@@ -243,6 +246,25 @@ const beginPan = (event: PointerEvent) => {
   canvas.setPointerCapture(event.pointerId);
   canvas.classList.add('pan-ready');
   canvas.classList.add('pan-active');
+};
+
+const updateDragPreview = (event: PointerEvent) => {
+  if (!isDragging || !dragOrigin) return;
+  const pointerWorld = toWorldPoint(event);
+  const rawVector = {
+    x: dragOrigin.x - pointerWorld.x,
+    y: dragOrigin.y - pointerWorld.y,
+  };
+  const zoom = renderer.getZoom();
+  dragVector = {
+    x: rawVector.x * zoom,
+    y: rawVector.y * zoom,
+  };
+  dragCurrent = {
+    x: dragOrigin.x - dragVector.x,
+    y: dragOrigin.y - dragVector.y,
+  };
+  renderScene();
 };
 
 const updatePanFromPointer = (event: PointerEvent) => {
@@ -332,8 +354,9 @@ canvas.addEventListener('pointerdown', (event) => {
     if (distanceToUnit <= activeUnit.def.radius + 12) {
       isDragging = true;
       dragOrigin = { ...activeUnit.position };
-      dragCurrent = pointer;
+      dragCurrent = { ...dragOrigin };
       dragPointerId = event.pointerId;
+      dragVector = { x: 0, y: 0 };
       canvas.setPointerCapture(event.pointerId);
       renderScene();
       return;
@@ -350,22 +373,19 @@ canvas.addEventListener('pointermove', (event) => {
     return;
   }
   if (!isDragging || event.pointerId !== dragPointerId) return;
-  dragCurrent = toWorldPoint(event);
-  renderScene();
+  updateDragPreview(event);
 });
 
 const endDrag = (event: PointerEvent, cancel = false) => {
   if (!isDragging || event.pointerId !== dragPointerId || !dragOrigin) return;
-  dragCurrent = toWorldPoint(event);
-  const actionVector = {
-    x: dragOrigin.x - dragCurrent.x,
-    y: dragOrigin.y - dragCurrent.y,
-  };
+  updateDragPreview(event);
+  const actionVector = dragVector ?? { x: 0, y: 0 };
   isDragging = false;
   const pointerId = dragPointerId;
   dragPointerId = null;
   dragOrigin = null;
   dragCurrent = null;
+  dragVector = null;
   if (pointerId !== null) {
     try {
       canvas.releasePointerCapture(pointerId);
@@ -467,13 +487,11 @@ function toWorldPoint(event: PointerEvent | WheelEvent): Vector {
   }
   const ratioX = (event.clientX - rect.left) / rect.width;
   const ratioY = (event.clientY - rect.top) / rect.height;
-  const clampedX = Math.min(Math.max(ratioX, 0), 1);
-  const clampedY = Math.min(Math.max(ratioY, 0), 1);
   const offset = renderer.getOffset();
   const view = renderer.getViewSize();
   return {
-    x: offset.x + view.x * clampedX,
-    y: offset.y + view.y * clampedY,
+    x: offset.x + view.x * ratioX,
+    y: offset.y + view.y * ratioY,
   };
 }
 
