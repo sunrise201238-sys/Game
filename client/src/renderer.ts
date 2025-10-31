@@ -99,36 +99,19 @@ export class Renderer {
   private updateCanvasSize(): void {
     const { width, height } = this.map;
     const parent = this.canvas.parentElement as HTMLElement | null;
-    const parentRect = parent?.getBoundingClientRect();
     const computedStyle = parent ? window.getComputedStyle(parent) : null;
     const paddingX = computedStyle
       ? parseFloat(computedStyle.paddingLeft || '0') + parseFloat(computedStyle.paddingRight || '0')
       : 0;
-    const paddingY = computedStyle
-      ? parseFloat(computedStyle.paddingTop || '0') + parseFloat(computedStyle.paddingBottom || '0')
-      : 0;
-    const borderX = computedStyle
-      ? parseFloat(computedStyle.borderLeftWidth || '0') + parseFloat(computedStyle.borderRightWidth || '0')
-      : 0;
-    const borderY = computedStyle
-      ? parseFloat(computedStyle.borderTopWidth || '0') + parseFloat(computedStyle.borderBottomWidth || '0')
-      : 0;
+    const contentWidth = parent
+      ? Math.max(0, parent.clientWidth - paddingX)
+      : this.canvas.clientWidth || width;
 
-    let availableWidth = (parentRect?.width ?? this.canvas.clientWidth ?? width) - paddingX - borderX;
-    let availableHeight = (parentRect?.height ?? this.canvas.clientHeight ?? height) - paddingY - borderY;
-
-    if (!Number.isFinite(availableWidth) || availableWidth <= 0) {
-      availableWidth = width;
-    }
-    if (!Number.isFinite(availableHeight) || availableHeight <= 0) {
-      availableHeight = (availableWidth / width) * height;
-    }
-
-    const scaleRatio = Math.min(availableWidth / width, availableHeight / height);
-    const safeScale = Number.isFinite(scaleRatio) && scaleRatio > 0 ? scaleRatio : 1;
-    this.baseScale = safeScale;
-    const targetWidth = width * safeScale;
-    const targetHeight = height * safeScale;
+    const safeWidth = Number.isFinite(contentWidth) && contentWidth > 0 ? contentWidth : width;
+    const safeScale = safeWidth / width;
+    this.baseScale = safeScale > 0 ? safeScale : 1;
+    const targetWidth = width * this.baseScale;
+    const targetHeight = height * this.baseScale;
     this.canvas.width = targetWidth * this.dpr;
     this.canvas.height = targetHeight * this.dpr;
     this.canvas.style.width = `${targetWidth}px`;
