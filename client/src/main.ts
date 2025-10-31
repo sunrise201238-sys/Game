@@ -1,7 +1,7 @@
 import { DEFAULT_MAP_ID, MAPS, getMapById } from './config';
 import { GameEngine } from './engine';
 import { Renderer } from './renderer';
-import type { GameMode, GameState, TeamId, UnitState, Vector } from './types';
+import type { GameMode, GameState, MapDefinition, TeamId, UnitState, Vector } from './types';
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const restartButton = document.getElementById('restart-btn') as HTMLButtonElement;
@@ -20,6 +20,7 @@ const zoomInButton = document.getElementById('zoom-in') as HTMLButtonElement;
 const zoomOutButton = document.getElementById('zoom-out') as HTMLButtonElement;
 const zoomResetButton = document.getElementById('zoom-reset') as HTMLButtonElement;
 const zoomIndicator = document.getElementById('zoom-indicator') as HTMLSpanElement;
+const boardStage = document.getElementById('board-stage') as HTMLDivElement;
 const ZOOM_STEP = 1.2;
 const DRAG_INPUT_MULTIPLIER = 1.35;
 
@@ -37,6 +38,14 @@ mapSelect.value = currentMap.id;
 const renderer = new Renderer(canvas, currentMap);
 const zoomLimits = renderer.getZoomLimits();
 
+const applyStageAspect = (map: MapDefinition) => {
+  if (boardStage) {
+    boardStage.style.setProperty('--board-aspect', `${map.width} / ${map.height}`);
+  }
+};
+
+applyStageAspect(currentMap);
+
 let currentState: GameState;
 let isDragging = false;
 let dragOrigin: Vector | null = null;
@@ -53,6 +62,7 @@ const engine = new GameEngine({
       currentMap = getMapById(state.mapId);
       renderer.setMap(currentMap);
       mapSelect.value = currentMap.id;
+      applyStageAspect(currentMap);
       updateZoomUi();
     }
     currentState = state;
@@ -121,6 +131,7 @@ restartButton.addEventListener('click', () => {
 mapSelect.addEventListener('change', () => {
   currentMap = getMapById(mapSelect.value);
   renderer.setMap(currentMap);
+  applyStageAspect(currentMap);
   isDragging = false;
   dragOrigin = null;
   dragCurrent = null;

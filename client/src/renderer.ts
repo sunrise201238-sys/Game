@@ -99,23 +99,23 @@ export class Renderer {
   private updateCanvasSize(): void {
     const { width, height } = this.map;
     const parent = this.canvas.parentElement as HTMLElement | null;
-    const computedStyle = parent ? window.getComputedStyle(parent) : null;
-    const paddingX = computedStyle
-      ? parseFloat(computedStyle.paddingLeft || '0') + parseFloat(computedStyle.paddingRight || '0')
-      : 0;
-    const contentWidth = parent
-      ? Math.max(0, parent.clientWidth - paddingX)
-      : this.canvas.clientWidth || width;
+    const parentRect = parent?.getBoundingClientRect();
+    const measuredWidth = parentRect?.width ?? this.canvas.getBoundingClientRect().width;
+    const fallbackWidth = parent?.clientWidth ?? this.canvas.clientWidth;
+    let resolvedWidth = width;
+    const widthCandidates = [measuredWidth, fallbackWidth];
+    for (const candidate of widthCandidates) {
+      if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {
+        resolvedWidth = candidate;
+        break;
+      }
+    }
 
-    const safeWidth = Number.isFinite(contentWidth) && contentWidth > 0 ? contentWidth : width;
-    const safeScale = safeWidth / width;
-    this.baseScale = safeScale > 0 ? safeScale : 1;
-    const targetWidth = width * this.baseScale;
-    const targetHeight = height * this.baseScale;
-    this.canvas.width = targetWidth * this.dpr;
-    this.canvas.height = targetHeight * this.dpr;
-    this.canvas.style.width = `${targetWidth}px`;
-    this.canvas.style.height = `${targetHeight}px`;
+    this.baseScale = resolvedWidth / width;
+    const targetPixelWidth = Math.max(1, Math.round(width * this.baseScale * this.dpr));
+    const targetPixelHeight = Math.max(1, Math.round(height * this.baseScale * this.dpr));
+    this.canvas.width = targetPixelWidth;
+    this.canvas.height = targetPixelHeight;
     this.offset = this.clampOffsetForZoom(this.offset, this.zoom);
     this.applyTransform();
   }
