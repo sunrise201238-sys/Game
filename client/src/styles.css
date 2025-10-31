@@ -158,20 +158,95 @@ main {
 
 #board-wrapper {
   display: flex;
+  flex-direction: column;
   justify-content: center;
-  align-items: center;
+  align-items: stretch;
+  gap: 0.75rem;
   padding: 1rem;
   background: rgba(255, 255, 255, 0.04);
   border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+.board-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.board-controls button,
+.zoom-controls button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.5rem 1rem;
+  background: linear-gradient(135deg, rgba(83, 225, 255, 0.95), rgba(255, 111, 145, 0.95));
+  color: #0b132b;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(83, 225, 255, 0.25);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.zoom-controls button {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.board-controls button:hover,
+.zoom-controls button:hover,
+.board-controls button:focus-visible,
+.zoom-controls button:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(83, 225, 255, 0.35);
+  outline: none;
+}
+
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.4rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.zoom-controls span {
+  min-width: 3.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
 #gameCanvas {
   width: 100%;
-  max-width: 960px;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(10, 18, 35, 0.85);
+}
+
+#gameCanvas.pan-ready {
+  cursor: grab;
+}
+
+#gameCanvas.pan-active {
+  cursor: grabbing;
+}
+
+#board-wrapper:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
+  border-radius: 0;
+  border: none;
+  box-sizing: border-box;
+}
+
+#board-wrapper:fullscreen canvas {
+  max-width: none;
 }
 
 #team-panels {

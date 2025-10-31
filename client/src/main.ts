@@ -16,6 +16,13 @@ const modeButtons = Array.from(
 );
 const playerHeading = document.getElementById('team-a-label') as HTMLHeadingElement;
 const opponentHeading = document.getElementById('team-b-label') as HTMLHeadingElement;
+const boardWrapper = document.getElementById('board-wrapper') as HTMLElement;
+const fullscreenButton = document.getElementById('fullscreen-btn') as HTMLButtonElement;
+const zoomInButton = document.getElementById('zoom-in') as HTMLButtonElement;
+const zoomOutButton = document.getElementById('zoom-out') as HTMLButtonElement;
+const zoomResetButton = document.getElementById('zoom-reset') as HTMLButtonElement;
+const zoomIndicator = document.getElementById('zoom-indicator') as HTMLSpanElement;
+const ZOOM_STEP = 1.2;
 
 let currentMap = getMapById(DEFAULT_MAP_ID);
 let currentMode: GameMode = 'bot';
@@ -34,6 +41,11 @@ let currentState: GameState;
 let isDragging = false;
 let dragOrigin: Vector | null = null;
 let dragCurrent: Vector | null = null;
+let dragPointerId: number | null = null;
+let isPanning = false;
+let panPointerId: number | null = null;
+let panLast: { x: number; y: number } | null = null;
+let panKeyActive = false;
 
 const engine = new GameEngine({
   onState: (state) => {
@@ -41,13 +53,11 @@ const engine = new GameEngine({
       currentMap = getMapById(state.mapId);
       renderer.setMap(currentMap);
       mapSelect.value = currentMap.id;
+      updateZoomIndicator();
     }
     currentState = state;
     updateUi(state);
-    renderer.render(state, {
-      dragOrigin: isDragging ? dragOrigin : null,
-      dragCurrent: isDragging ? dragCurrent : null,
-    });
+    renderScene();
   },
   onFrame: () => {
     // no-op: renderer re-renders when state updates
@@ -56,12 +66,49 @@ const engine = new GameEngine({
 
 currentState = engine.getSnapshot();
 updateUi(currentState);
-renderer.render(currentState);
+const renderScene = () => {
+  renderer.render(currentState, {
+    dragOrigin: isDragging ? dragOrigin : null,
+    dragCurrent: isDragging ? dragCurrent : null,
+  });
+};
+
+const updateZoomIndicator = () => {
+  const percent = Math.round(renderer.getZoom() * 100);
+  zoomIndicator.textContent = `${percent}%`;
+};
+
+const getCameraCenter = (): Vector => {
+  const offset = renderer.getOffset();
+  const view = renderer.getViewSize();
+  return {
+    x: offset.x + view.x / 2,
+    y: offset.y + view.y / 2,
+  };
+};
+
+const applyZoomFactor = (factor: number, anchor?: Vector) => {
+  renderer.setZoom(renderer.getZoom() * factor, anchor);
+  renderScene();
+  updateZoomIndicator();
+};
+
+renderScene();
+updateZoomIndicator();
 
 restartButton.addEventListener('click', () => {
   isDragging = false;
   dragOrigin = null;
   dragCurrent = null;
+  if (dragPointerId !== null) {
+    try {
+      canvas.releasePointerCapture(dragPointerId);
+    } catch (error) {
+      // ignore if pointer capture already released
+    }
+  }
+  dragPointerId = null;
+  stopPan();
   engine.startNewGame(currentMap, currentMode);
 });
 
@@ -71,6 +118,16 @@ mapSelect.addEventListener('change', () => {
   isDragging = false;
   dragOrigin = null;
   dragCurrent = null;
+  if (dragPointerId !== null) {
+    try {
+      canvas.releasePointerCapture(dragPointerId);
+    } catch (error) {
+      // ignore if pointer capture already released
+    }
+  }
+  dragPointerId = null;
+  stopPan();
+  updateZoomIndicator();
   engine.startNewGame(currentMap, currentMode);
 });
 
@@ -84,7 +141,85 @@ modeButtons.forEach((button) => {
   });
 });
 
+const beginPan = (event: PointerEvent) => {
+  isPanning = true;
+  panPointerId = event.pointerId;
+  panLast = { x: event.clientX, y: event.clientY };
+  canvas.setPointerCapture(event.pointerId);
+  canvas.classList.add('pan-ready');
+  canvas.classList.add('pan-active');
+};
+
+const updatePanFromPointer = (event: PointerEvent) => {
+  if (!isPanning || event.pointerId !== panPointerId || !panLast) return;
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return;
+  const view = renderer.getViewSize();
+  const deltaX = event.clientX - panLast.x;
+  const deltaY = event.clientY - panLast.y;
+  const worldDelta = {
+    x: (-deltaX / rect.width) * view.x,
+    y: (-deltaY / rect.height) * view.y,
+  };
+  panLast = { x: event.clientX, y: event.clientY };
+  renderer.panBy(worldDelta);
+  renderScene();
+};
+
+const stopPan = () => {
+  if (panPointerId !== null) {
+    try {
+      canvas.releasePointerCapture(panPointerId);
+    } catch (error) {
+      // ignore release errors if pointer capture is already cleared
+    }
+  }
+  isPanning = false;
+  panPointerId = null;
+  panLast = null;
+  canvas.classList.remove('pan-active');
+  if (!panKeyActive) {
+    canvas.classList.remove('pan-ready');
+  }
+};
+
+window.addEventListener('keydown', (event) => {
+  if (event.code !== 'Space' || panKeyActive) return;
+  const target = event.target as HTMLElement | null;
+  if (target && ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(target.tagName)) {
+    return;
+  }
+  panKeyActive = true;
+  canvas.classList.add('pan-ready');
+  event.preventDefault();
+});
+
+window.addEventListener('keyup', (event) => {
+  if (event.code !== 'Space') return;
+  panKeyActive = false;
+  if (!isPanning) {
+    canvas.classList.remove('pan-ready');
+  }
+});
+
+window.addEventListener('blur', () => {
+  panKeyActive = false;
+  if (!isPanning) {
+    canvas.classList.remove('pan-ready');
+  }
+});
+
 canvas.addEventListener('pointerdown', (event) => {
+  const wantsPan =
+    event.button === 1 ||
+    event.button === 2 ||
+    (panKeyActive && event.button === 0);
+  if (wantsPan) {
+    event.preventDefault();
+    beginPan(event);
+    return;
+  }
+  if (event.button !== 0) return;
   if (!engine.canPlayerAct()) return;
   const pointer = toWorldPoint(event);
   const activeUnit = getActiveUnit(currentState);
@@ -95,47 +230,117 @@ canvas.addEventListener('pointerdown', (event) => {
   isDragging = true;
   dragOrigin = { ...activeUnit.position };
   dragCurrent = pointer;
+  dragPointerId = event.pointerId;
   canvas.setPointerCapture(event.pointerId);
-  renderer.render(currentState, { dragOrigin, dragCurrent });
+  renderScene();
 });
 
 canvas.addEventListener('pointermove', (event) => {
-  if (!isDragging) return;
+  if (isPanning && event.pointerId === panPointerId) {
+    updatePanFromPointer(event);
+    return;
+  }
+  if (!isDragging || event.pointerId !== dragPointerId) return;
   dragCurrent = toWorldPoint(event);
-  renderer.render(currentState, { dragOrigin, dragCurrent });
+  renderScene();
 });
 
-const endDrag = (event: PointerEvent) => {
-  if (!isDragging || !dragOrigin) return;
+const endDrag = (event: PointerEvent, cancel = false) => {
+  if (!isDragging || event.pointerId !== dragPointerId || !dragOrigin) return;
   dragCurrent = toWorldPoint(event);
   const actionVector = {
     x: dragOrigin.x - dragCurrent.x,
     y: dragOrigin.y - dragCurrent.y,
   };
   isDragging = false;
+  const pointerId = dragPointerId;
+  dragPointerId = null;
   dragOrigin = null;
   dragCurrent = null;
-  renderer.render(currentState);
-  engine.beginPlayerAction(actionVector);
+  if (pointerId !== null) {
+    try {
+      canvas.releasePointerCapture(pointerId);
+    } catch (error) {
+      // ignore if pointer capture already released
+    }
+  }
+  renderScene();
+  if (!cancel) {
+    engine.beginPlayerAction(actionVector);
+  }
 };
 
 canvas.addEventListener('pointerup', (event) => {
+  if (isPanning && event.pointerId === panPointerId) {
+    stopPan();
+    return;
+  }
   endDrag(event);
-  canvas.releasePointerCapture(event.pointerId);
 });
 
 canvas.addEventListener('pointercancel', (event) => {
-  endDrag(event);
-  canvas.releasePointerCapture(event.pointerId);
+  if (isPanning && event.pointerId === panPointerId) {
+    stopPan();
+    return;
+  }
+  endDrag(event, true);
 });
 
-function toWorldPoint(event: PointerEvent): Vector {
+canvas.addEventListener('wheel', (event) => {
+  event.preventDefault();
+  const anchor = toWorldPoint(event);
+  const factor = event.deltaY > 0 ? 1 / ZOOM_STEP : ZOOM_STEP;
+  applyZoomFactor(factor, anchor);
+});
+
+canvas.addEventListener('contextmenu', (event) => {
+  event.preventDefault();
+});
+
+zoomInButton.addEventListener('click', () => {
+  applyZoomFactor(ZOOM_STEP, getCameraCenter());
+});
+
+zoomOutButton.addEventListener('click', () => {
+  applyZoomFactor(1 / ZOOM_STEP, getCameraCenter());
+});
+
+zoomResetButton.addEventListener('click', () => {
+  renderer.resetCamera();
+  renderer.refreshViewport();
+  renderScene();
+  updateZoomIndicator();
+});
+
+fullscreenButton.addEventListener('click', () => {
+  if (document.fullscreenElement === boardWrapper) {
+    document.exitFullscreen().catch(() => undefined);
+  } else {
+    boardWrapper.requestFullscreen().catch(() => undefined);
+  }
+});
+
+document.addEventListener('fullscreenchange', () => {
+  const isFullscreen = document.fullscreenElement === boardWrapper;
+  fullscreenButton.textContent = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
+  renderer.refreshViewport();
+  renderScene();
+});
+
+function toWorldPoint(event: PointerEvent | WheelEvent): Vector {
   const rect = canvas.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) {
+    return { x: 0, y: 0 };
+  }
   const ratioX = (event.clientX - rect.left) / rect.width;
   const ratioY = (event.clientY - rect.top) / rect.height;
+  const clampedX = Math.min(Math.max(ratioX, 0), 1);
+  const clampedY = Math.min(Math.max(ratioY, 0), 1);
+  const offset = renderer.getOffset();
+  const view = renderer.getViewSize();
   return {
-    x: currentMap.width * ratioX,
-    y: currentMap.height * ratioY,
+    x: offset.x + view.x * clampedX,
+    y: offset.y + view.y * clampedY,
   };
 }
 

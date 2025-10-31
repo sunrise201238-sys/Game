@@ -258,16 +258,10 @@ export class GameEngine {
       const unit = this.state.units.find((u) => u.id === unitId);
       if (!unit) continue;
       unit.alive = false;
-      const grave = this.state.graves.find((g) => distance(g.position, unit.position) < unit.def.radius * 0.75);
-      if (grave) {
-        grave.count += 1;
-      } else {
-        this.state.graves.push({
-          position: { ...unit.position },
-          team: unit.team,
-          count: 1,
-        });
-      }
+      this.state.graves.push({
+        position: { ...unit.position },
+        team: unit.team,
+      });
     }
     if (deaths.length) {
       this.state.statuses = this.state.statuses.filter((status) => !deaths.includes(status.unitId));

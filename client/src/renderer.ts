@@ -57,6 +57,11 @@ export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private map: MapDefinition;
   private dpr = window.devicePixelRatio || 1;
+  private baseScale = 1;
+  private zoom = 1;
+  private offset: Vector = { x: 0, y: 0 };
+  private readonly minZoom = 0.6;
+  private readonly maxZoom = 2.5;
 
   constructor(canvas: HTMLCanvasElement, map: MapDefinition) {
     const ctx = canvas.getContext('2d');
@@ -66,30 +71,106 @@ export class Renderer {
     this.canvas = canvas;
     this.ctx = ctx;
     this.map = map;
-    this.resizeToMap(this.map);
-    window.addEventListener('resize', () => this.resizeToMap(this.map));
+    this.resetCamera();
+    this.updateCanvasSize();
+    window.addEventListener('resize', () => this.handleResize());
   }
 
   setMap(map: MapDefinition): void {
-    this.resizeToMap(map);
+    this.map = map;
+    this.resetCamera();
+    this.updateCanvasSize();
   }
 
-  resizeToMap(map: MapDefinition): void {
-    this.map = map;
-    const { width, height } = map;
+  private handleResize(): void {
+    this.updateCanvasSize();
+  }
+
+  private updateCanvasSize(): void {
+    const { width, height } = this.map;
     const rect = this.canvas.getBoundingClientRect();
     const scaleRatio = Math.min(rect.width / width, rect.height / height) || 1;
+    this.baseScale = scaleRatio;
     const targetWidth = width * scaleRatio;
     const targetHeight = height * scaleRatio;
     this.canvas.width = targetWidth * this.dpr;
     this.canvas.height = targetHeight * this.dpr;
     this.canvas.style.width = `${targetWidth}px`;
     this.canvas.style.height = `${targetHeight}px`;
-    this.ctx.setTransform(this.dpr * scaleRatio, 0, 0, this.dpr * scaleRatio, 0, 0);
+    this.offset = this.clampOffsetForZoom(this.offset, this.zoom);
+    this.applyTransform();
+  }
+
+  private applyTransform(): void {
+    const scale = this.baseScale * this.zoom;
+    const pixelScale = scale * this.dpr;
+    const translateX = -this.offset.x * pixelScale;
+    const translateY = -this.offset.y * pixelScale;
+    this.ctx.setTransform(pixelScale, 0, 0, pixelScale, translateX, translateY);
+  }
+
+  resetCamera(): void {
+    this.zoom = 1;
+    this.offset = this.clampOffsetForZoom({ x: 0, y: 0 }, this.zoom);
+    this.applyTransform();
+  }
+
+  getZoom(): number {
+    return this.zoom;
+  }
+
+  getViewSize(): Vector {
+    return { x: this.map.width / this.zoom, y: this.map.height / this.zoom };
+  }
+
+  getOffset(): Vector {
+    return { ...this.offset };
+  }
+
+  setZoom(zoom: number, anchor?: Vector): void {
+    const clamped = Math.min(this.maxZoom, Math.max(this.minZoom, zoom));
+    const currentView = this.getViewSize();
+    const focus = anchor ?? {
+      x: this.offset.x + currentView.x / 2,
+      y: this.offset.y + currentView.y / 2,
+    };
+    this.zoom = clamped;
+    const nextView = this.getViewSize();
+    const desiredOffset = {
+      x: focus.x - nextView.x / 2,
+      y: focus.y - nextView.y / 2,
+    };
+    this.offset = this.clampOffsetForZoom(desiredOffset, this.zoom);
+    this.applyTransform();
+  }
+
+  panBy(delta: Vector): void {
+    const desired = { x: this.offset.x + delta.x, y: this.offset.y + delta.y };
+    this.offset = this.clampOffsetForZoom(desired, this.zoom);
+    this.applyTransform();
+  }
+
+  refreshViewport(): void {
+    this.updateCanvasSize();
+  }
+
+  private clampOffsetForZoom(offset: Vector, zoom: number): Vector {
+    const viewWidth = this.map.width / zoom;
+    const viewHeight = this.map.height / zoom;
+    const extraWidth = Math.max(0, viewWidth - this.map.width);
+    const extraHeight = Math.max(0, viewHeight - this.map.height);
+    const minX = extraWidth > 0 ? -extraWidth / 2 : 0;
+    const maxX = extraWidth > 0 ? extraWidth / 2 : Math.max(0, this.map.width - viewWidth);
+    const minY = extraHeight > 0 ? -extraHeight / 2 : 0;
+    const maxY = extraHeight > 0 ? extraHeight / 2 : Math.max(0, this.map.height - viewHeight);
+    return {
+      x: Math.min(Math.max(offset.x, minX), maxX),
+      y: Math.min(Math.max(offset.y, minY), maxY),
+    };
   }
 
   render(state: GameState, options: RenderOptions = {}): void {
-    this.clear();
+    this.prepareFrame();
     this.drawArena();
     this.drawLakes();
     this.drawWalls();
@@ -101,8 +182,10 @@ export class Renderer {
     this.drawStatus(state);
   }
 
-  private clear(): void {
+  private prepareFrame(): void {
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.applyTransform();
   }
 
   private drawArena(): void {
@@ -234,22 +317,16 @@ export class Renderer {
 
   private drawGraves(graves: GraveMarker[]): void {
     const { ctx } = this;
-    ctx.fillStyle = '#cccccc';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.textAlign = 'center';
     for (const grave of graves) {
       ctx.save();
+      const markerColor = grave.team === 0 ? 'rgba(148,163,184,0.85)' : 'rgba(250,204,21,0.85)';
+      ctx.fillStyle = markerColor;
       ctx.translate(grave.position.x, grave.position.y);
       ctx.rotate(-Math.PI / 8);
       ctx.fillRect(-4, -16, 8, 20);
       ctx.fillRect(-10, -10, 20, 6);
       ctx.restore();
-      if (grave.count > 1) {
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(`×${grave.count}`, grave.position.x, grave.position.y - 20);
-      }
     }
-    ctx.textAlign = 'left';
   }
 
   private drawDragIndicator(state: GameState, options: RenderOptions): void {

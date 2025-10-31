@@ -32,6 +32,15 @@
           </div>
         </section>
         <section id="board-wrapper">
+          <div class="board-controls" role="group" aria-label="View controls">
+            <button id="fullscreen-btn" type="button">Fullscreen</button>
+            <div class="zoom-controls" role="group" aria-label="Zoom controls">
+              <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
+              <span id="zoom-indicator" aria-live="polite">100%</span>
+              <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
+              <button id="zoom-reset" type="button" aria-label="Reset zoom">Reset</button>
+            </div>
+          </div>
           <canvas id="gameCanvas" width="960" height="540"></canvas>
         </section>
         <section id="team-panels">

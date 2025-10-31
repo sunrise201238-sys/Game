@@ -58,7 +58,6 @@ export interface UnitState {
 export interface GraveMarker {
   position: Vector;
   team: TeamId;
-  count: number;
 }
 
 export interface Rect {
