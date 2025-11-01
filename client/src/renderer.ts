@@ -684,11 +684,18 @@ export class Renderer {
   ): void {
     const { ctx } = this;
     const radius = unit.def.radius;
+    const isVip = unit.def.id === 'vip';
     ctx.save();
     ctx.translate(unit.position.x, unit.position.y);
     if (highlight) {
       ctx.shadowBlur = 22;
       ctx.shadowColor = strokeColor;
+    }
+
+    if (isVip) {
+      const glowBlur = highlight ? 28 : 16;
+      ctx.shadowColor = this.replaceAlpha(strokeColor, highlight ? 0.95 : 0.75);
+      ctx.shadowBlur = Math.max(ctx.shadowBlur || 0, glowBlur);
     }
 
     ctx.fillStyle = fillColor;
@@ -703,6 +710,15 @@ export class Renderer {
       case 'mage':
         this.traceRegularPolygon(6, radius, Math.PI / 6);
         break;
+      case 'vip': {
+        const gradient = ctx.createRadialGradient(0, 0, radius * 0.2, 0, 0, radius);
+        gradient.addColorStop(0, this.lightenColor(fillColor, 0.4));
+        gradient.addColorStop(0.85, fillColor);
+        gradient.addColorStop(1, this.replaceAlpha(strokeColor, 0.9));
+        ctx.fillStyle = gradient;
+        this.traceStarShape(5, radius, radius * 0.52, -Math.PI / 2);
+        break;
+      }
       default:
         ctx.arc(0, 0, radius, 0, Math.PI * 2);
         break;
@@ -713,7 +729,7 @@ export class Renderer {
 
     ctx.beginPath();
     ctx.fillStyle = coreColor;
-    ctx.arc(0, 0, Math.max(3, radius * 0.28), 0, Math.PI * 2);
+    ctx.arc(0, 0, Math.max(3, isVip ? radius * 0.36 : radius * 0.28), 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -766,6 +782,22 @@ export class Renderer {
   private traceRegularPolygon(sides: number, radius: number, rotation = 0): void {
     for (let i = 0; i < sides; i += 1) {
       const angle = rotation + (Math.PI * 2 * i) / sides;
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius;
+      if (i === 0) {
+        this.ctx.moveTo(x, y);
+      } else {
+        this.ctx.lineTo(x, y);
+      }
+    }
+    this.ctx.closePath();
+  }
+
+  private traceStarShape(points: number, outerRadius: number, innerRadius: number, rotation = 0): void {
+    const step = Math.PI / points;
+    for (let i = 0; i < points * 2; i += 1) {
+      const angle = rotation + step * i;
+      const radius = i % 2 === 0 ? outerRadius : innerRadius;
       const x = Math.cos(angle) * radius;
       const y = Math.sin(angle) * radius;
       if (i === 0) {

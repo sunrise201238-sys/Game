@@ -239,8 +239,8 @@ export const MAPS: MapDefinition[] = [
   },
   {
     id: 'lone-bridge',
-    name: 'Lone Bridge',
-    description: 'Only one wide span connects mirrored reservoirs—control the middle causeway.',
+    name: 'Lone Island',
+    description: 'One resilient isle links mirrored reservoirs—control the solitary land bridge.',
     width: 2048,
     height: 1152,
     lakes: [
@@ -265,6 +265,34 @@ export const MAPS: MapDefinition[] = [
       { x: 1288, y: 576 },
       { x: 1228, y: 516 },
       { x: 1228, y: 636 },
+    ],
+  },
+  {
+    id: 'bridge',
+    name: 'Bridge',
+    description: 'Twin lakes frame a broad central crossing—meet on the open span.',
+    width: 1024,
+    height: 576,
+    lakes: [
+      { x: 250, y: 40, width: 520, height: 160 },
+      { x: 250, y: 360, width: 520, height: 180 },
+    ],
+    walls: [],
+    playerSpawns: [
+      { x: 180, y: 288 },
+      { x: 220, y: 240 },
+      { x: 220, y: 336 },
+      { x: 260, y: 288 },
+      { x: 300, y: 240 },
+      { x: 300, y: 336 },
+    ],
+    botSpawns: [
+      { x: 844, y: 288 },
+      { x: 804, y: 240 },
+      { x: 804, y: 336 },
+      { x: 764, y: 288 },
+      { x: 724, y: 240 },
+      { x: 724, y: 336 },
     ],
   },
   {
