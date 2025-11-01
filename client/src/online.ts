@@ -49,16 +49,46 @@ export class OnlineMatchClient {
     this.events.onStatusChange(status, message);
   }
 
+  private buildSocketUrl(): string {
+    const configured = import.meta.env.VITE_MATCHMAKER_URL?.trim();
+    const normalize = (raw: string): string => {
+      let target: URL;
+      try {
+        target = new URL(raw);
+      } catch {
+        target = new URL(raw, window.location.origin);
+      }
+      if (target.protocol === 'http:') {
+        target.protocol = 'ws:';
+      } else if (target.protocol === 'https:') {
+        target.protocol = 'wss:';
+      }
+      const basePath = target.pathname.replace(/\/+$/, '');
+      target.pathname = `${basePath}/match`;
+      return target.toString();
+    };
+
+    if (configured) {
+      return normalize(configured);
+    }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const hostname = window.location.hostname || 'localhost';
+    const port = import.meta.env.DEV
+      ? import.meta.env.VITE_MATCHMAKER_PORT ?? '3001'
+      : window.location.port;
+    const url = new URL(`${protocol}//${hostname}${port ? `:${port}` : ''}`);
+    url.pathname = '/match';
+    return url.toString();
+  }
+
   private ensureSocket(): void {
     if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
       return;
     }
     this.manualClose = false;
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const port = window.location.port;
-    const base = `${protocol}://${window.location.hostname}${port ? `:${port}` : ''}`;
-    const url = `${base}/match`;
-    this.socket = new WebSocket(url);
+    const socketUrl = this.buildSocketUrl();
+    this.socket = new WebSocket(socketUrl);
     this.setStatus('connecting');
 
     this.socket.addEventListener('open', () => {
