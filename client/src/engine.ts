@@ -370,6 +370,7 @@ export class GameEngine {
 
     const processedZoneHits = new Set<string>();
     const damagedUnits = new Set<string>();
+    const collisionDamageImmunities = new Set<string>();
 
     const registerZoneContact = (unit: UnitClone, zone: ZoneClone) => {
       if (!unit.alive || unit.team === zone.ownerTeam) return;
@@ -513,6 +514,10 @@ export class GameEngine {
               activeVelocities.set(other.id, newVelB);
             }
           } else if (moving) {
+            const immunityKey = `${clone.id}|${other.id}`;
+            if (collisionDamageImmunities.has(immunityKey)) {
+              continue;
+            }
             const blockKey = `${clone.id}->${other.id}`;
             if (collisionDamageMemory.has(blockKey)) {
               continue;
@@ -532,6 +537,7 @@ export class GameEngine {
             const recoilVec = add(activeVelocities.get(clone.id) ?? { x: 0, y: 0 }, scale(dir, -clone.def.recoil));
             activeVelocities.set(clone.id, recoilVec);
             collisionDamageMemory.add(`${other.id}->${clone.id}`);
+            collisionDamageImmunities.add(`${other.id}|${clone.id}`);
           }
         }
       }
