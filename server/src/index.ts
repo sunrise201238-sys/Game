@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer } from 'http';
 import { randomUUID } from 'crypto';
-import { WebSocketServer, type WebSocket } from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
 import type { ClientToServerMessage, ServerToClientMessage, TeamId } from '@slingshot/shared';
 
 const __filename = fileURLToPath(import.meta.url);
