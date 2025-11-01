@@ -57,6 +57,7 @@ export class GameEngine {
   private pendingBotTimeout: number | null = null;
   private projectileCounter = 0;
   private zoneCounter = 0;
+  private recordedGraves = new Set<string>();
   private map: MapDefinition;
   private readonly loadout: string[];
   private mode: GameMode;
@@ -275,12 +276,13 @@ export class GameEngine {
     let outcome: TeamId | 'draw' | null = null;
     for (const unitId of deaths) {
       const unit = this.state.units.find((u) => u.id === unitId);
-      if (!unit) continue;
+      if (!unit || this.recordedGraves.has(unitId)) continue;
       unit.alive = false;
       this.state.graves.push({
         position: { ...unit.position },
         team: unit.team,
       });
+      this.recordedGraves.add(unitId);
       if (unit.def.loseOnDeath) {
         if (outcome === null) {
           outcome = unit.team;
@@ -522,7 +524,8 @@ export class GameEngine {
             if (collisionDamageMemory.has(blockKey)) {
               continue;
             }
-            if (!damagedUnits.has(other.id)) {
+            const hittingAttacker = other.id === attacker.id;
+            if (!hittingAttacker && !damagedUnits.has(other.id)) {
               other.hp = Math.max(0, other.hp - clone.def.collideDamage);
               if (other.hp === 0) {
                 other.alive = false;
@@ -538,6 +541,9 @@ export class GameEngine {
             activeVelocities.set(clone.id, recoilVec);
             collisionDamageMemory.add(`${other.id}->${clone.id}`);
             collisionDamageImmunities.add(`${other.id}|${clone.id}`);
+            if (hittingAttacker) {
+              collisionDamageImmunities.add(`${clone.id}|${other.id}`);
+            }
           }
         }
       }
@@ -1004,6 +1010,7 @@ export class GameEngine {
   }
 
   private createInitialState(): GameState {
+    this.recordedGraves.clear();
     const units: UnitState[] = [];
     const map = this.map;
 
