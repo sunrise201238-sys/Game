@@ -57,7 +57,6 @@ export class GameEngine {
   private pendingBotTimeout: number | null = null;
   private projectileCounter = 0;
   private zoneCounter = 0;
-  private recordedGraves = new Set<string>();
   private map: MapDefinition;
   private readonly loadout: string[];
   private mode: GameMode;
@@ -276,13 +275,12 @@ export class GameEngine {
     let outcome: TeamId | 'draw' | null = null;
     for (const unitId of deaths) {
       const unit = this.state.units.find((u) => u.id === unitId);
-      if (!unit || this.recordedGraves.has(unitId)) continue;
+      if (!unit) continue;
       unit.alive = false;
       this.state.graves.push({
         position: { ...unit.position },
         team: unit.team,
       });
-      this.recordedGraves.add(unitId);
       if (unit.def.loseOnDeath) {
         if (outcome === null) {
           outcome = unit.team;
@@ -302,6 +300,8 @@ export class GameEngine {
       ...structuredClone(unit),
       velocity: { x: 0, y: 0 },
     }));
+
+    const aliveAtStart = new Set(clones.filter((unit) => unit.alive).map((unit) => unit.id));
 
     const existingZones: ZoneClone[] = this.state.zones.map((zone) => structuredClone(zone));
     const zoneClones: ZoneClone[] = [...existingZones];
@@ -596,22 +596,21 @@ export class GameEngine {
 
     const deaths: string[] = [];
     for (const clone of clones) {
-      if (!clone.alive) {
-        deaths.push(clone.id);
-        continue;
-      }
-      if (clone.hp <= 0) {
+      const startedAlive = aliveAtStart.has(clone.id);
+      let dead = !clone.alive;
+      if (!dead && clone.hp <= 0) {
         clone.alive = false;
-        deaths.push(clone.id);
-        continue;
+        dead = true;
       }
-      if (!this.pointInsideMap(clone)) {
+      if (!dead && !this.pointInsideMap(clone)) {
         clone.alive = false;
-        deaths.push(clone.id);
-        continue;
+        dead = true;
       }
-      if (this.isInHazard(clone.position)) {
+      if (!dead && this.isInHazard(clone.position)) {
         clone.alive = false;
+        dead = true;
+      }
+      if (dead && startedAlive) {
         deaths.push(clone.id);
       }
     }
@@ -1010,7 +1009,6 @@ export class GameEngine {
   }
 
   private createInitialState(): GameState {
-    this.recordedGraves.clear();
     const units: UnitState[] = [];
     const map = this.map;
 

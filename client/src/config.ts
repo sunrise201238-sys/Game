@@ -273,26 +273,42 @@ export const MAPS: MapDefinition[] = [
     description: 'Face off across a straight causeway suspended between mirrored lakes.',
     width: 1024,
     height: 576,
+    // Lakes only occupy the middle third; left & right columns are LAND.
     lakes: [
-      { x: 0, y: 0, width: 1024, height: 192 },
-      { x: 0, y: 384, width: 1024, height: 192 },
+      { x: 256, y: 0, width: 512, height: 192 },
+      { x: 256, y: 384, width: 512, height: 192 },
     ],
     walls: [],
+    // Team 0 (left/home). Spread across lanes by role:
+    // Soldiers (front, closest to center), Mages (mid), Archers (back).
     playerSpawns: [
-      { x: 380, y: 240 },
-      { x: 380, y: 288 },
-      { x: 380, y: 336 },
-      { x: 320, y: 288 },
-      { x: 268, y: 232 },
-      { x: 268, y: 344 },
+      // Soldiers – front line facing right
+      { x: 480, y: 240 },
+      { x: 480, y: 288 },
+      { x: 480, y: 336 },
+      // Mages – middle line
+      { x: 432, y: 240 },
+      { x: 432, y: 288 },
+      { x: 432, y: 336 },
+      // Archers – back line
+      { x: 384, y: 240 },
+      { x: 384, y: 288 },
+      { x: 384, y: 336 },
     ],
+    // Team 1 (right/home). Mirrored layout:
     botSpawns: [
-      { x: 644, y: 240 },
-      { x: 644, y: 288 },
-      { x: 644, y: 336 },
-      { x: 704, y: 288 },
-      { x: 756, y: 232 },
-      { x: 756, y: 344 },
+      // Soldiers – front line facing left
+      { x: 544, y: 240 },
+      { x: 544, y: 288 },
+      { x: 544, y: 336 },
+      // Mages – middle line
+      { x: 592, y: 240 },
+      { x: 592, y: 288 },
+      { x: 592, y: 336 },
+      // Archers – back line
+      { x: 640, y: 240 },
+      { x: 640, y: 288 },
+      { x: 640, y: 336 },
     ],
   },
   {
