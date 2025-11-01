@@ -19,6 +19,9 @@ interface OnlineMatchEvents {
   onOpponentLeft(): void;
 }
 
+const RECONNECT_BASE_DELAY = 1_000;
+const RECONNECT_MAX_DELAY = 10_000;
+
 export class OnlineMatchClient {
   private socket: WebSocket | null = null;
 
@@ -31,6 +34,16 @@ export class OnlineMatchClient {
   private messageQueue: ClientToServerMessage[] = [];
 
   private manualClose = false;
+
+  private reconnectTimer: number | null = null;
+
+  private reconnectDelay = RECONNECT_BASE_DELAY;
+
+  private shouldAutoQueue = false;
+
+  private desiredQueueMapId: string | null = null;
+
+  private pendingReconnectQueue = false;
 
   constructor(events: OnlineMatchEvents) {
     this.events = events;
@@ -92,7 +105,14 @@ export class OnlineMatchClient {
     this.setStatus('connecting');
 
     this.socket.addEventListener('open', () => {
+      this.clearReconnectTimer();
+      this.resetReconnectBackoff();
       this.flushQueue();
+      const shouldRequeue = this.pendingReconnectQueue && this.shouldAutoQueue && this.desiredQueueMapId !== null;
+      this.pendingReconnectQueue = false;
+      if (shouldRequeue && this.desiredQueueMapId) {
+        this.send({ type: 'queue', mapId: this.desiredQueueMapId });
+      }
       if (this.status === 'connecting') {
         this.setStatus('idle');
       }
@@ -110,19 +130,28 @@ export class OnlineMatchClient {
     this.socket.addEventListener('close', () => {
       this.socket = null;
       this.matchId = null;
+      this.clearReconnectTimer();
       if (this.manualClose) {
         this.setStatus('idle');
         return;
       }
+      if (this.shouldAutoQueue && this.desiredQueueMapId) {
+        this.pendingReconnectQueue = true;
+      }
       if (this.status !== 'disconnected' && this.status !== 'error') {
         this.setStatus('disconnected');
       }
+      this.scheduleReconnect();
     });
 
     this.socket.addEventListener('error', () => {
       if (this.status !== 'error') {
         this.setStatus('error', 'Connection error');
       }
+      if (this.shouldAutoQueue && this.desiredQueueMapId) {
+        this.pendingReconnectQueue = true;
+      }
+      this.scheduleReconnect();
     });
   }
 
@@ -144,17 +173,47 @@ export class OnlineMatchClient {
     }
   }
 
+  private scheduleReconnect(): void {
+    if (this.manualClose) return;
+    if (this.reconnectTimer !== null) {
+      return;
+    }
+    const delay = this.reconnectDelay;
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = null;
+      this.ensureSocket();
+    }, delay);
+    this.reconnectDelay = Math.min(this.reconnectDelay * 2, RECONNECT_MAX_DELAY);
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  private resetReconnectBackoff(): void {
+    this.reconnectDelay = RECONNECT_BASE_DELAY;
+  }
+
   private handleMessage(message: ServerToClientMessage): void {
     switch (message.type) {
       case 'queued':
         this.setStatus('queued');
         break;
       case 'queue-cancelled':
+        this.shouldAutoQueue = false;
+        this.desiredQueueMapId = null;
+        this.pendingReconnectQueue = false;
         this.setStatus('idle');
         break;
       case 'match-found':
         this.matchId = message.matchId;
         this.setStatus('matched');
+        this.shouldAutoQueue = false;
+        this.pendingReconnectQueue = false;
+        this.desiredQueueMapId = null;
         this.events.onMatchFound({
           matchId: message.matchId,
           team: message.team,
@@ -172,6 +231,9 @@ export class OnlineMatchClient {
           return;
         }
         this.setStatus('opponent-left');
+        this.shouldAutoQueue = false;
+        this.pendingReconnectQueue = false;
+        this.desiredQueueMapId = null;
         this.events.onOpponentLeft();
         break;
       case 'error':
@@ -187,6 +249,9 @@ export class OnlineMatchClient {
     if (!this.socket) {
       return;
     }
+    this.shouldAutoQueue = true;
+    this.desiredQueueMapId = mapId;
+    this.pendingReconnectQueue = false;
     if (this.matchId) {
       this.send({ type: 'leave-match', matchId: this.matchId });
       this.matchId = null;
@@ -196,11 +261,17 @@ export class OnlineMatchClient {
 
   cancelQueue(): void {
     if (!this.socket) return;
+    this.shouldAutoQueue = false;
+    this.desiredQueueMapId = null;
+    this.pendingReconnectQueue = false;
     this.send({ type: 'cancel-queue' });
   }
 
   leaveMatch(): void {
     if (!this.matchId) return;
+    this.shouldAutoQueue = false;
+    this.pendingReconnectQueue = false;
+    this.desiredQueueMapId = null;
     this.send({ type: 'leave-match', matchId: this.matchId });
     this.matchId = null;
   }
@@ -213,6 +284,11 @@ export class OnlineMatchClient {
   disconnect(): void {
     if (!this.socket) return;
     this.manualClose = true;
+    this.shouldAutoQueue = false;
+    this.desiredQueueMapId = null;
+    this.pendingReconnectQueue = false;
+    this.clearReconnectTimer();
+    this.resetReconnectBackoff();
     try {
       this.socket.close();
     } catch (error) {

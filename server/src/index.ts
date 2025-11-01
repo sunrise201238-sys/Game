@@ -123,7 +123,38 @@ const tryMatchPlayers = () => {
   }
 };
 
+interface HeartbeatWebSocket extends WebSocket {
+  isAlive?: boolean;
+}
+
+const HEARTBEAT_INTERVAL = 30_000;
+
 const wss = new WebSocketServer({ server, path: '/match' });
+
+const getClients = () => (wss as unknown as { clients: Set<WebSocket> }).clients;
+
+const heartbeatTimer = setInterval(() => {
+  for (const rawSocket of getClients()) {
+    const socket = rawSocket as HeartbeatWebSocket;
+    if (socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING) {
+      continue;
+    }
+    if (socket.isAlive === false) {
+      (socket as HeartbeatWebSocket & { terminate?: () => void }).terminate?.();
+      continue;
+    }
+    socket.isAlive = false;
+    try {
+      (socket as HeartbeatWebSocket & { ping?: () => void }).ping?.();
+    } catch {
+      (socket as HeartbeatWebSocket & { terminate?: () => void }).terminate?.();
+    }
+  }
+}, HEARTBEAT_INTERVAL);
+
+(wss as unknown as { on(event: 'close', listener: () => void): void }).on('close', () => {
+  clearInterval(heartbeatTimer);
+});
 
 wss.on('connection', (socket) => {
   const client: ClientSession = {
@@ -132,6 +163,12 @@ wss.on('connection', (socket) => {
     status: 'idle',
     mapId: 'training-grounds',
   };
+
+  (socket as HeartbeatWebSocket).isAlive = true;
+
+  (socket as unknown as { on(event: 'pong', listener: () => void): void }).on('pong', () => {
+    (socket as HeartbeatWebSocket).isAlive = true;
+  });
 
   socket.on('message', (data) => {
     let parsed: ClientToServerMessage;
