@@ -443,6 +443,7 @@ export class GameEngine {
               clone.hp = Math.max(0, clone.hp - projectile.damage);
               if (clone.hp === 0) {
                 clone.alive = false;
+                activeVelocities.delete(clone.id);
               }
               const knockDir = normalize(subtract(clone.position, projectile.position));
               const knockVec = scale(knockDir, projectile.knockback * (1 - clone.def.resistance));
@@ -460,6 +461,10 @@ export class GameEngine {
       }
 
       for (const clone of clones) {
+        if (!clone.alive) {
+          activeVelocities.delete(clone.id);
+          continue;
+        }
         const currentVel = activeVelocities.get(clone.id);
         if (!currentVel) continue;
         const radius = clone.def.radius;
@@ -482,6 +487,7 @@ export class GameEngine {
       }
 
       for (const clone of clones) {
+        if (!clone.alive) continue;
         const currentVel = activeVelocities.get(clone.id);
         const moving = Boolean(currentVel);
         for (const other of clones) {
@@ -529,6 +535,7 @@ export class GameEngine {
               other.hp = Math.max(0, other.hp - clone.def.collideDamage);
               if (other.hp === 0) {
                 other.alive = false;
+                activeVelocities.delete(other.id);
               }
               damagedUnits.add(other.id);
             }
@@ -600,14 +607,17 @@ export class GameEngine {
       let dead = !clone.alive;
       if (!dead && clone.hp <= 0) {
         clone.alive = false;
+        activeVelocities.delete(clone.id);
         dead = true;
       }
       if (!dead && !this.pointInsideMap(clone)) {
         clone.alive = false;
+        activeVelocities.delete(clone.id);
         dead = true;
       }
       if (!dead && this.isInHazard(clone.position)) {
         clone.alive = false;
+        activeVelocities.delete(clone.id);
         dead = true;
       }
       if (dead && startedAlive) {

@@ -283,32 +283,32 @@ export const MAPS: MapDefinition[] = [
     // Soldiers (front, closest to center), Mages (mid), Archers (back).
     playerSpawns: [
       // Soldiers – front line facing right
-      { x: 480, y: 240 },
-      { x: 480, y: 288 },
-      { x: 480, y: 336 },
+      { x: 192, y: 240 },
+      { x: 192, y: 288 },
+      { x: 192, y: 336 },
       // Mages – middle line
-      { x: 432, y: 240 },
-      { x: 432, y: 288 },
-      { x: 432, y: 336 },
+      { x: 144, y: 240 },
+      { x: 144, y: 288 },
+      { x: 144, y: 336 },
       // Archers – back line
-      { x: 384, y: 240 },
-      { x: 384, y: 288 },
-      { x: 384, y: 336 },
+      { x: 96, y: 240 },
+      { x: 96, y: 288 },
+      { x: 96, y: 336 },
     ],
     // Team 1 (right/home). Mirrored layout:
     botSpawns: [
       // Soldiers – front line facing left
-      { x: 544, y: 240 },
-      { x: 544, y: 288 },
-      { x: 544, y: 336 },
+      { x: 832, y: 240 },
+      { x: 832, y: 288 },
+      { x: 832, y: 336 },
       // Mages – middle line
-      { x: 592, y: 240 },
-      { x: 592, y: 288 },
-      { x: 592, y: 336 },
+      { x: 880, y: 240 },
+      { x: 880, y: 288 },
+      { x: 880, y: 336 },
       // Archers – back line
-      { x: 640, y: 240 },
-      { x: 640, y: 288 },
-      { x: 640, y: 336 },
+      { x: 928, y: 240 },
+      { x: 928, y: 288 },
+      { x: 928, y: 336 },
     ],
   },
   {
