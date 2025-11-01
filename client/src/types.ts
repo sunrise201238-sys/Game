@@ -39,6 +39,8 @@ export interface UnitDefinition {
   recoil: number;
   resistance: number;
   maxPower: number;
+  controllable?: boolean;
+  loseOnDeath?: boolean;
   aimCurveExponent?: number;
   aimCurveSmoothing?: number;
   projectile?: ProjectileSpec;
@@ -67,6 +69,12 @@ export interface Rect {
   height: number;
 }
 
+export interface VipPlacement {
+  team: TeamId;
+  position: Vector;
+  unitId?: string;
+}
+
 export interface MapDefinition {
   id: string;
   name: string;
@@ -78,6 +86,7 @@ export interface MapDefinition {
   botSpawns: Vector[];
   description?: string;
   teamLoadouts?: Partial<Record<TeamId, string[]>>;
+  vipUnits?: VipPlacement[];
 }
 
 export type GamePhase = 'aim' | 'bot-planning' | 'animating' | 'ended';

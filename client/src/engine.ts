@@ -180,7 +180,16 @@ export class GameEngine {
 
   private finalize(result: SimulationResult, actingTeam: TeamId): void {
     this.applyFinalUnits(result.finalUnits);
-    this.registerDeaths(result.deaths);
+    const deathOutcome = this.registerDeaths(result.deaths);
+    if (deathOutcome === 'draw') {
+      this.handleDraw();
+      return;
+    }
+    if (deathOutcome !== null) {
+      const winner = deathOutcome === PLAYER_TEAM ? BOT_TEAM : PLAYER_TEAM;
+      this.handleWin(winner);
+      return;
+    }
     this.addZones(result.zonesToAdd);
     this.applyStatusInflictions(result.inflictedStatuses);
 
@@ -199,7 +208,16 @@ export class GameEngine {
       this.state.round += 1;
     }
 
-    this.applyTurnStartEffects(this.state.activeTeam);
+    const statusOutcome = this.applyTurnStartEffects(this.state.activeTeam);
+    if (statusOutcome === 'draw') {
+      this.handleDraw();
+      return;
+    }
+    if (statusOutcome !== null) {
+      const winner = statusOutcome === PLAYER_TEAM ? BOT_TEAM : PLAYER_TEAM;
+      this.handleWin(winner);
+      return;
+    }
 
     const otherAlive = this.hasAliveUnits(otherTeam);
     const actingAlive = this.hasAliveUnits(actingTeam);
@@ -252,8 +270,9 @@ export class GameEngine {
     }
   }
 
-  private registerDeaths(deaths: string[]): void {
-    if (deaths.length === 0) return;
+  private registerDeaths(deaths: string[]): TeamId | 'draw' | null {
+    if (deaths.length === 0) return null;
+    let outcome: TeamId | 'draw' | null = null;
     for (const unitId of deaths) {
       const unit = this.state.units.find((u) => u.id === unitId);
       if (!unit) continue;
@@ -262,10 +281,18 @@ export class GameEngine {
         position: { ...unit.position },
         team: unit.team,
       });
+      if (unit.def.loseOnDeath) {
+        if (outcome === null) {
+          outcome = unit.team;
+        } else if (outcome !== unit.team) {
+          outcome = 'draw';
+        }
+      }
     }
     if (deaths.length) {
       this.state.statuses = this.state.statuses.filter((status) => !deaths.includes(status.unitId));
     }
+    return outcome;
   }
 
   private simulateAction(action: DragAction): SimulationResult {
@@ -461,15 +488,30 @@ export class GameEngine {
           if (dist === 0 || dist >= minDist) continue;
           const dir = normalize(subtract(other.position, clone.position));
           const overlap = minDist - dist;
-          clone.position = add(clone.position, scale(dir, -overlap / 2));
-          other.position = add(other.position, scale(dir, overlap / 2));
+          const cloneImmovable = clone.def.controllable === false;
+          const otherImmovable = other.def.controllable === false;
+          if (cloneImmovable && otherImmovable) {
+            continue;
+          }
+          if (cloneImmovable) {
+            other.position = add(other.position, scale(dir, overlap));
+          } else if (otherImmovable) {
+            clone.position = add(clone.position, scale(dir, -overlap));
+          } else {
+            clone.position = add(clone.position, scale(dir, -overlap / 2));
+            other.position = add(other.position, scale(dir, overlap / 2));
+          }
 
           if (clone.team === other.team) {
             const shove = scale(dir, 40);
-            const newVelA = add(activeVelocities.get(clone.id) ?? { x: 0, y: 0 }, scale(shove, -0.5));
-            const newVelB = add(activeVelocities.get(other.id) ?? { x: 0, y: 0 }, scale(shove, 0.5));
-            activeVelocities.set(clone.id, newVelA);
-            activeVelocities.set(other.id, newVelB);
+            if (!cloneImmovable) {
+              const newVelA = add(activeVelocities.get(clone.id) ?? { x: 0, y: 0 }, scale(shove, -0.5));
+              activeVelocities.set(clone.id, newVelA);
+            }
+            if (!otherImmovable) {
+              const newVelB = add(activeVelocities.get(other.id) ?? { x: 0, y: 0 }, scale(shove, 0.5));
+              activeVelocities.set(other.id, newVelB);
+            }
           } else if (moving) {
             const blockKey = `${clone.id}->${other.id}`;
             if (collisionDamageMemory.has(blockKey)) {
@@ -482,9 +524,11 @@ export class GameEngine {
               }
               damagedUnits.add(other.id);
             }
-            const knockScale = clone.def.knockback * (1 - other.def.resistance);
-            const targetVel = add(activeVelocities.get(other.id) ?? { x: 0, y: 0 }, scale(dir, knockScale));
-            activeVelocities.set(other.id, targetVel);
+            if (!otherImmovable) {
+              const knockScale = clone.def.knockback * (1 - other.def.resistance);
+              const targetVel = add(activeVelocities.get(other.id) ?? { x: 0, y: 0 }, scale(dir, knockScale));
+              activeVelocities.set(other.id, targetVel);
+            }
             const recoilVec = add(activeVelocities.get(clone.id) ?? { x: 0, y: 0 }, scale(dir, -clone.def.recoil));
             activeVelocities.set(clone.id, recoilVec);
             collisionDamageMemory.add(`${other.id}->${clone.id}`);
@@ -650,8 +694,8 @@ export class GameEngine {
     }
   }
 
-  private applyTurnStartEffects(team: TeamId): void {
-    if (this.state.statuses.length === 0) return;
+  private applyTurnStartEffects(team: TeamId): TeamId | 'draw' | null {
+    if (this.state.statuses.length === 0) return null;
     const remaining: StatusEffect[] = [];
     const deaths: string[] = [];
     for (const effect of this.state.statuses) {
@@ -674,8 +718,9 @@ export class GameEngine {
     }
     this.state.statuses = remaining;
     if (deaths.length) {
-      this.registerDeaths(deaths);
+      return this.registerDeaths(deaths);
     }
+    return null;
   }
 
   private reduceZoneDurationsAfterRound(): void {
@@ -932,7 +977,9 @@ export class GameEngine {
   }
 
   private hasAliveUnits(team: TeamId): boolean {
-    return this.state.units.some((u) => u.team === team && u.alive);
+    return this.state.units.some(
+      (u) => u.team === team && u.alive && u.def.controllable !== false,
+    );
   }
 
   private findNextAlive(team: TeamId): { unit: UnitState | null; index: number } {
@@ -954,7 +1001,12 @@ export class GameEngine {
     const units: UnitState[] = [];
     const map = this.map;
 
-    const createUnit = (def: UnitDefinition, team: TeamId, position: Vector, suffix: number): UnitState => ({
+    const createUnit = (
+      def: UnitDefinition,
+      team: TeamId,
+      position: Vector,
+      suffix: string | number,
+    ): UnitState => ({
       id: `${def.id}-${team}-${suffix}`,
       def,
       team,
@@ -983,6 +1035,12 @@ export class GameEngine {
       }
     }
 
+    map.vipUnits?.forEach((vip, index) => {
+      const def = getUnitDefinition(vip.unitId ?? 'vip');
+      const spawn = this.ensureSafeSpawn(vip.position, def.radius);
+      units.push(createUnit(def, vip.team, spawn, `vip-${index}`));
+    });
+
     const orderPlayer = this.createOrder(units, PLAYER_TEAM);
     const orderBot = this.createOrder(units, BOT_TEAM);
 
@@ -1009,7 +1067,7 @@ export class GameEngine {
   }
 
   private createOrder(units: UnitState[], team: TeamId): TurnOrderState {
-    const teamUnits = units.filter((u) => u.team === team);
+    const teamUnits = units.filter((u) => u.team === team && u.def.controllable !== false);
     const queue = teamUnits
       .slice()
       .sort((a, b) => {
