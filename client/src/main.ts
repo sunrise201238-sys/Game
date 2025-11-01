@@ -1,6 +1,8 @@
 import { DEFAULT_MAP_ID, MAPS, getMapById } from './config';
 import { GameEngine } from './engine';
+import { OnlineMatchClient } from './online';
 import { Renderer } from './renderer';
+import type { OnlineStatus } from '@slingshot/shared';
 import type { GameMode, GameState, MapDefinition, TeamId, UnitState, Vector } from './types';
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
@@ -26,6 +28,11 @@ const DRAG_INPUT_MULTIPLIER = 1.35;
 
 let currentMap = getMapById(DEFAULT_MAP_ID);
 let currentMode: GameMode = 'bot';
+let onlineClient: OnlineMatchClient | null = null;
+let onlineStatus: OnlineStatus = 'idle';
+let onlineStatusMessage: string | undefined;
+let onlineTeam: TeamId | null = null;
+let onlinePendingAction = false;
 
 for (const map of MAPS) {
   const option = document.createElement('option');
@@ -111,6 +118,50 @@ const applyZoomFactor = (factor: number, anchor?: Vector) => {
 renderScene();
 updateZoomUi();
 
+const ensureOnlineClient = (): OnlineMatchClient => {
+  if (onlineClient) {
+    return onlineClient;
+  }
+  onlineClient = new OnlineMatchClient({
+    onStatusChange: (status, message) => {
+      onlineStatus = status;
+      onlineStatusMessage = message;
+      if (status !== 'matched') {
+        onlinePendingAction = false;
+        engine.setOnlineReady(false);
+      } else {
+        engine.setOnlineReady(true);
+      }
+      updateUi(currentState);
+    },
+    onMatchFound: ({ matchId, team, mapId }) => {
+      onlineTeam = team;
+      onlinePendingAction = false;
+      const map = getMapById(mapId);
+      if (currentMap.id !== map.id) {
+        currentMap = map;
+        renderer.setMap(currentMap);
+        mapSelect.value = currentMap.id;
+        applyStageAspect(currentMap);
+        updateZoomUi();
+      }
+      onlineStatusMessage = team === 0 ? 'You go first.' : 'Opponent goes first.';
+      engine.setPlayerTeam(team);
+      engine.startNewGame(currentMap, 'online', team);
+    },
+    onActionReceived: (action, team) => {
+      onlinePendingAction = false;
+      engine.beginNetworkAction(action, team);
+    },
+    onOpponentLeft: () => {
+      onlinePendingAction = false;
+      engine.setOnlineReady(false);
+      updateUi(currentState);
+    },
+  });
+  return onlineClient;
+};
+
 restartButton.addEventListener('click', () => {
   isDragging = false;
   dragOrigin = null;
@@ -125,6 +176,19 @@ restartButton.addEventListener('click', () => {
   }
   dragPointerId = null;
   stopPan();
+  if (currentMode === 'online') {
+    const client = ensureOnlineClient();
+    if (onlineStatus === 'queued' || onlineStatus === 'connecting') {
+      client.cancelQueue();
+    } else {
+      if (onlineStatus === 'matched') {
+        client.leaveMatch();
+      }
+      engine.setOnlineReady(false);
+      client.queueForMatch(currentMap.id);
+    }
+    return;
+  }
   engine.startNewGame(currentMap, currentMode);
 });
 
@@ -146,6 +210,16 @@ mapSelect.addEventListener('change', () => {
   dragPointerId = null;
   stopPan();
   updateZoomUi();
+  if (currentMode === 'online') {
+    const client = ensureOnlineClient();
+    if (onlineStatus === 'matched') {
+      client.leaveMatch();
+    } else if (onlineStatus === 'queued' || onlineStatus === 'connecting') {
+      client.cancelQueue();
+    }
+    engine.setOnlineReady(false);
+    return;
+  }
   engine.startNewGame(currentMap, currentMode);
 });
 
@@ -153,9 +227,24 @@ modeButtons.forEach((button) => {
   button.addEventListener('click', () => {
     const mode = button.dataset.mode as GameMode | undefined;
     if (!mode || mode === currentMode) return;
+    if (mode !== 'online' && currentMode === 'online') {
+      onlineClient?.disconnect();
+      onlineClient = null;
+      onlineStatus = 'idle';
+      onlineStatusMessage = undefined;
+      onlineTeam = null;
+      onlinePendingAction = false;
+      engine.setOnlineReady(true);
+    }
     currentMode = mode;
     setActiveModeButton(mode);
-    engine.startNewGame(currentMap, currentMode);
+    if (mode === 'online') {
+      ensureOnlineClient();
+      engine.setOnlineReady(false);
+      engine.startNewGame(currentMap, currentMode);
+    } else {
+      engine.startNewGame(currentMap, currentMode);
+    }
   });
 });
 
@@ -259,6 +348,11 @@ canvas.addEventListener('pointerdown', (event) => {
     return;
   }
 
+  if (currentMode === 'online' && onlinePendingAction) {
+    event.preventDefault();
+    return;
+  }
+
   const pointer = toWorldPoint(event);
   const canAct = engine.canPlayerAct();
   const activeUnit = canAct ? getActiveUnit(currentState) : null;
@@ -307,9 +401,24 @@ const endDrag = (event: PointerEvent, cancel = false) => {
     }
   }
   renderScene();
-  if (!cancel) {
-    engine.beginPlayerAction(actionVector);
+  if (cancel) {
+    return;
   }
+  if (currentMode === 'online') {
+    if (onlineStatus !== 'matched') {
+      return;
+    }
+    const client = onlineClient ?? ensureOnlineClient();
+    const team = onlineTeam ?? engine.getPlayerTeam();
+    const action = engine.createActionFromVector(actionVector);
+    if (!action || !client) {
+      return;
+    }
+    onlinePendingAction = true;
+    client.submitAction(action, team);
+    return;
+  }
+  engine.beginPlayerAction(actionVector);
 };
 
 canvas.addEventListener('pointerup', (event) => {
@@ -373,21 +482,76 @@ function updateUi(state: GameState): void {
   const activeUnit = getActiveUnit(state);
   roundLabel.textContent = `Round ${state.round}`;
   setActiveModeButton(state.mode);
-  if (state.winner !== null) {
-    phaseLabel.textContent = state.winner === 0 ? 'Team One Wins!' : state.winner === 1 ? (state.mode === 'bot' ? 'Bot Wins!' : 'Team Two Wins!') : 'Draw';
-  } else if (state.phase === 'aim') {
-    if (state.mode === 'hotseat') {
-      phaseLabel.textContent = state.activeTeam === 0 ? 'Team One: Aim' : 'Team Two: Aim';
-    } else {
-      phaseLabel.textContent = state.activeTeam === 0 ? 'Your turn' : 'Bot turn';
+  const localTeam: TeamId = state.mode === 'online' ? onlineTeam ?? engine.getPlayerTeam() : 0;
+
+  let phaseText = '';
+  if (state.mode === 'online') {
+    const lockMap = ['connecting', 'queued', 'matched'] as const;
+    mapSelect.disabled = lockMap.includes(onlineStatus);
+    restartButton.textContent =
+      onlineStatus === 'queued' || onlineStatus === 'connecting'
+        ? 'Cancel Search'
+        : onlineStatus === 'matched'
+        ? 'Start New Match'
+        : 'Find Match';
+    if (state.winner !== null) {
+      phaseText =
+        state.winner === 'draw'
+          ? 'Draw'
+          : state.winner === localTeam
+          ? 'You win!'
+          : 'Opponent wins!';
+    } else if (onlineStatus !== 'matched') {
+      switch (onlineStatus) {
+        case 'connecting':
+          phaseText = 'Connecting…';
+          break;
+        case 'queued':
+          phaseText = 'Searching for opponent…';
+          break;
+        case 'opponent-left':
+          phaseText = 'Opponent disconnected';
+          break;
+        case 'disconnected':
+          phaseText = 'Connection lost';
+          break;
+        case 'error':
+          phaseText = onlineStatusMessage ?? 'Matchmaking error';
+          break;
+        default:
+          phaseText = 'Find an opponent to begin';
+          break;
+      }
+    } else if (state.phase === 'aim') {
+      phaseText = state.activeTeam === localTeam ? 'Your turn' : 'Opponent turn';
+    } else if (state.phase === 'animating') {
+      phaseText = 'Resolving';
     }
-  } else if (state.phase === 'bot-planning') {
-    phaseLabel.textContent = 'Bot planning';
-  } else if (state.phase === 'animating') {
-    phaseLabel.textContent = 'Resolving';
   } else {
-    phaseLabel.textContent = '';
+    mapSelect.disabled = false;
+    restartButton.textContent = 'Start New Game';
+    if (state.winner !== null) {
+      phaseText =
+        state.winner === 'draw'
+          ? 'Draw'
+          : state.winner === 0
+          ? 'Team One Wins!'
+          : state.mode === 'bot'
+          ? 'Bot Wins!'
+          : 'Team Two Wins!';
+    } else if (state.phase === 'aim') {
+      if (state.mode === 'hotseat') {
+        phaseText = state.activeTeam === 0 ? 'Team One: Aim' : 'Team Two: Aim';
+      } else {
+        phaseText = state.activeTeam === 0 ? 'Your turn' : 'Bot turn';
+      }
+    } else if (state.phase === 'bot-planning') {
+      phaseText = 'Bot planning';
+    } else if (state.phase === 'animating') {
+      phaseText = 'Resolving';
+    }
   }
+  phaseLabel.textContent = phaseText;
 
   const activeId = activeUnit?.id ?? null;
   updateUnitList(playerList, state, 0, activeId);
@@ -396,12 +560,43 @@ function updateUi(state: GameState): void {
   if (state.mode === 'hotseat') {
     playerHeading.textContent = 'Team One';
     opponentHeading.textContent = 'Team Two';
+  } else if (state.mode === 'online') {
+    playerHeading.textContent = 'You';
+    opponentHeading.textContent = 'Opponent';
   } else {
     playerHeading.textContent = 'Your Squad';
     opponentHeading.textContent = 'Bot Squad';
   }
 
   const baseHint = (() => {
+    if (state.mode === 'online') {
+      if (state.winner !== null) {
+        return 'Tap "Start New Match" to battle again.';
+      }
+      if (onlineStatus !== 'matched') {
+        switch (onlineStatus) {
+          case 'connecting':
+            return 'Connecting to matchmaking…';
+          case 'queued':
+            return 'Searching for an opponent…';
+          case 'opponent-left':
+            return 'Opponent disconnected. Tap "Find Match" to seek a new rival.';
+          case 'disconnected':
+            return 'Connection lost. Tap "Find Match" to reconnect.';
+          case 'error':
+            return onlineStatusMessage ? `Matchmaking error: ${onlineStatusMessage}` : 'Matchmaking error. Please try again.';
+          default:
+            return 'Tap "Find Match" to battle another player online.';
+        }
+      }
+      if (state.phase === 'animating') {
+        return 'Resolving actions…';
+      }
+      const suffix = onlineStatusMessage && state.round === 1 ? ` ${onlineStatusMessage}` : '';
+      return state.activeTeam === localTeam
+        ? `Drag your highlighted unit away from where you want it to travel, then release.${suffix}`
+        : 'Opponent is acting — watch the field.';
+    }
     if (state.winner !== null) {
       return 'Tap "Start New Game" to play again.';
     }

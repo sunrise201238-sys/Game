@@ -60,21 +60,25 @@ export class GameEngine {
   private map: MapDefinition;
   private readonly loadout: string[];
   private mode: GameMode;
+  private playerTeam: TeamId;
+  private onlineReady = true;
 
   constructor(
     listeners: EngineListeners,
     map: MapDefinition,
     loadout: string[] = TEAM_LOADOUT,
-    mode: GameMode = 'bot'
+    mode: GameMode = 'bot',
+    playerTeam: TeamId = PLAYER_TEAM
   ) {
     this.listeners = listeners;
     this.map = structuredClone(map);
     this.loadout = [...loadout];
     this.mode = mode;
+    this.playerTeam = playerTeam;
     this.state = this.createInitialState();
   }
 
-  startNewGame(map?: MapDefinition, mode?: GameMode): void {
+  startNewGame(map?: MapDefinition, mode?: GameMode, playerTeam?: TeamId): void {
     if (this.pendingBotTimeout) {
       window.clearTimeout(this.pendingBotTimeout);
       this.pendingBotTimeout = null;
@@ -87,8 +91,27 @@ export class GameEngine {
     if (map) {
       this.map = structuredClone(map);
     }
+    if (playerTeam !== undefined) {
+      this.playerTeam = playerTeam;
+    }
     this.state = this.createInitialState();
     this.emitState();
+  }
+
+  setPlayerTeam(team: TeamId): void {
+    this.playerTeam = team;
+  }
+
+  setOnlineReady(ready: boolean): void {
+    this.onlineReady = ready;
+  }
+
+  getPlayerTeam(): TeamId {
+    return this.playerTeam;
+  }
+
+  private getOpponentTeam(team: TeamId): TeamId {
+    return team === PLAYER_TEAM ? BOT_TEAM : PLAYER_TEAM;
   }
 
   private resolveZoneColor(spec: NonNullable<UnitDefinition['aoe']>, team: TeamId): string {
@@ -111,27 +134,52 @@ export class GameEngine {
     if (this.mode === 'hotseat') {
       return true;
     }
-    return this.state.activeTeam === PLAYER_TEAM;
+    if (this.mode === 'online' && !this.onlineReady) {
+      return false;
+    }
+    return this.state.activeTeam === this.playerTeam;
   }
 
   beginPlayerAction(actionVector: Vector): void {
-    if (!this.canPlayerAct()) return;
+    const action = this.createActionFromVector(actionVector);
+    if (!action) return;
     const actingTeam = this.state.activeTeam;
-    if (this.mode === 'bot' && actingTeam !== PLAYER_TEAM) {
+    if (this.mode === 'bot' && actingTeam !== this.playerTeam) {
       return;
     }
+    if (this.mode === 'online') {
+      return;
+    }
+    this.executeAction(action, actingTeam);
+  }
+
+  createActionFromVector(actionVector: Vector): DragAction | null {
+    if (!this.canPlayerAct()) return null;
+    const actingTeam = this.state.activeTeam;
     const unit = this.getActiveUnit();
     if (!unit) {
-      this.handleWin(actingTeam === PLAYER_TEAM ? BOT_TEAM : PLAYER_TEAM);
-      return;
+      this.handleWin(this.getOpponentTeam(actingTeam));
+      return null;
     }
     const drag = clampMagnitude(actionVector, unit.def.maxPower);
     const power = length(drag);
-    const action: DragAction = {
+    return {
       unitId: unit.id,
       power,
       vector: drag,
     };
+  }
+
+  beginNetworkAction(action: DragAction, actingTeam: TeamId): void {
+    if (this.mode !== 'online') {
+      return;
+    }
+    if (this.state.winner || this.state.phase === 'ended') {
+      return;
+    }
+    if (actingTeam !== this.state.activeTeam) {
+      return;
+    }
     this.executeAction(action, actingTeam);
   }
 
@@ -145,7 +193,7 @@ export class GameEngine {
       this.pendingBotTimeout = null;
       const unitInfo = this.findNextAlive(BOT_TEAM);
       if (!unitInfo.unit) {
-        this.handleWin(PLAYER_TEAM);
+        this.handleWin(this.playerTeam);
         return;
       }
       const botAction = this.createBotAction(unitInfo.unit);
@@ -186,7 +234,8 @@ export class GameEngine {
       return;
     }
     if (deathOutcome !== null) {
-      const winner = deathOutcome === PLAYER_TEAM ? BOT_TEAM : PLAYER_TEAM;
+      const losingTeam = deathOutcome as TeamId;
+      const winner = this.getOpponentTeam(losingTeam);
       this.handleWin(winner);
       return;
     }
@@ -201,10 +250,10 @@ export class GameEngine {
     }
     this.cleanupExpiredZones();
 
-    const otherTeam: TeamId = actingTeam === PLAYER_TEAM ? BOT_TEAM : PLAYER_TEAM;
+    const otherTeam: TeamId = this.getOpponentTeam(actingTeam);
     this.state.activeTeam = otherTeam;
 
-    if (this.state.activeTeam === PLAYER_TEAM) {
+    if (this.state.activeTeam === this.playerTeam) {
       this.state.round += 1;
     }
 
@@ -214,7 +263,8 @@ export class GameEngine {
       return;
     }
     if (statusOutcome !== null) {
-      const winner = statusOutcome === PLAYER_TEAM ? BOT_TEAM : PLAYER_TEAM;
+      const losingTeam = statusOutcome as TeamId;
+      const winner = this.getOpponentTeam(losingTeam);
       this.handleWin(winner);
       return;
     }

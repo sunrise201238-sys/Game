@@ -1,10 +1,6 @@
-export type TeamId = 0 | 1;
-export type GameMode = 'bot' | 'hotseat';
+import type { DragAction, TeamId, Vector } from '@slingshot/shared';
 
-export interface Vector {
-  x: number;
-  y: number;
-}
+export type GameMode = 'bot' | 'hotseat' | 'online';
 
 export interface ProjectileSpec {
   speed: number;
@@ -169,8 +165,4 @@ export interface SimulationResult {
   inflictedStatuses: StatusEffect[];
 }
 
-export interface DragAction {
-  unitId: string;
-  power: number;
-  vector: Vector;
-}
+export type { DragAction, TeamId, Vector };
