@@ -77,7 +77,8 @@ export class OnlineMatchClient {
         target.protocol = 'wss:';
       }
       const basePath = target.pathname.replace(/\/+$/, '');
-      target.pathname = `${basePath}/match`;
+      const hasMatchSuffix = /(?:^|\/)match$/.test(basePath);
+      target.pathname = hasMatchSuffix ? basePath : `${basePath}/match`;
       return target.toString();
     };
 
