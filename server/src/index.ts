@@ -3,7 +3,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer } from 'http';
 import { randomUUID } from 'crypto';
-import { WebSocketServer, WebSocket } from 'ws';
+import { WebSocketServer } from 'ws';
+import type { WebSocket } from 'ws';
 import type { ClientToServerMessage, ServerToClientMessage, TeamId } from '@slingshot/shared';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -46,7 +47,7 @@ const waitingQueue: ClientSession[] = [];
 const matches = new Map<string, MatchSession>();
 
 const send = (client: ClientSession, message: ServerToClientMessage) => {
-  if (client.socket.readyState !== WebSocket.OPEN) return;
+  if (client.socket.readyState !== client.socket.OPEN) return;
   client.socket.send(JSON.stringify(message));
 };
 
@@ -87,7 +88,7 @@ const leaveMatch = (client: ClientSession, notifyOpponent = true) => {
 
 const cleanupQueue = () => {
   for (let index = waitingQueue.length - 1; index >= 0; index -= 1) {
-    if (waitingQueue[index].socket.readyState !== WebSocket.OPEN) {
+    if (waitingQueue[index].socket.readyState !== waitingQueue[index].socket.OPEN) {
       waitingQueue.splice(index, 1);
     }
   }
@@ -136,7 +137,7 @@ const getClients = () => (wss as unknown as { clients: Set<WebSocket> }).clients
 const heartbeatTimer = setInterval(() => {
   for (const rawSocket of getClients()) {
     const socket = rawSocket as HeartbeatWebSocket;
-    if (socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING) {
+    if (socket.readyState === socket.CLOSED || socket.readyState === socket.CLOSING) {
       continue;
     }
     if (socket.isAlive === false) {
