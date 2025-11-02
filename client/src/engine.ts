@@ -204,6 +204,11 @@ export class GameEngine {
   private executeAction(action: DragAction, actingTeam: TeamId): void {
     const unit = this.state.units.find((u) => u.id === action.unitId && u.alive);
     if (!unit) return;
+    const order = this.state.orders[actingTeam];
+    const actingIndex = order.queue.indexOf(action.unitId);
+    if (actingIndex !== -1) {
+      order.nextIndex = actingIndex;
+    }
     this.state.phase = 'animating';
     this.emitState();
 
@@ -1061,7 +1066,6 @@ export class GameEngine {
       const unitId = queue[index];
       const unit = this.state.units.find((u) => u.id === unitId && u.alive);
       if (unit) {
-        order.nextIndex = index;
         return { unit, index };
       }
     }
