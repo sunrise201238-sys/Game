@@ -23,6 +23,8 @@ const zoomOutButton = document.getElementById('zoom-out') as HTMLButtonElement;
 const zoomResetButton = document.getElementById('zoom-reset') as HTMLButtonElement;
 const zoomIndicator = document.getElementById('zoom-indicator') as HTMLSpanElement;
 const boardStage = document.getElementById('board-stage') as HTMLDivElement;
+const body = document.body as HTMLBodyElement;
+const fullscreenButton = document.getElementById('fullscreen-toggle') as HTMLButtonElement;
 const ZOOM_STEP = 1.2;
 const DRAG_INPUT_MULTIPLIER = 1.35;
 
@@ -45,13 +47,42 @@ mapSelect.value = currentMap.id;
 const renderer = new Renderer(canvas, currentMap);
 const zoomLimits = renderer.getZoomLimits();
 
+const updateFullscreenSizing = () => {
+  if (!boardStage) {
+    return;
+  }
+  if (!isBoardFullscreen()) {
+    boardStage.style.removeProperty('--board-fullscreen-width');
+    boardStage.style.removeProperty('--board-fullscreen-height');
+    return;
+  }
+  const viewportWidth = Math.max(1, window.visualViewport?.width ?? window.innerWidth);
+  const viewportHeight = Math.max(1, window.visualViewport?.height ?? window.innerHeight);
+  const aspect = currentMap.width / currentMap.height;
+  if (!Number.isFinite(aspect) || aspect <= 0) {
+    return;
+  }
+  const viewportAspect = viewportWidth / viewportHeight;
+  let targetWidth = viewportWidth;
+  let targetHeight = viewportHeight;
+  if (viewportAspect > aspect) {
+    targetHeight = viewportHeight;
+    targetWidth = targetHeight * aspect;
+  } else {
+    targetWidth = viewportWidth;
+    targetHeight = targetWidth / aspect;
+  }
+  boardStage.style.setProperty('--board-fullscreen-width', `${targetWidth}px`);
+  boardStage.style.setProperty('--board-fullscreen-height', `${targetHeight}px`);
+};
+
 const applyStageAspect = (map: MapDefinition) => {
   if (boardStage) {
     boardStage.style.setProperty('--board-aspect', `${map.width} / ${map.height}`);
   }
+  updateFullscreenSizing();
 };
 
-applyStageAspect(currentMap);
 
 let currentState: GameState;
 let isDragging = false;
@@ -63,6 +94,15 @@ let isPanning = false;
 let panPointerId: number | null = null;
 let panLast: { x: number; y: number } | null = null;
 let panKeyActive = false;
+type PointerPosition = { clientX: number; clientY: number };
+const activeTouchPointers = new Map<number, PointerPosition>();
+interface PinchState {
+  pointerIds: [number, number];
+  initialDistance: number;
+  initialZoom: number;
+  lastCenterClient: { x: number; y: number };
+}
+let pinchState: PinchState | null = null;
 const engine = new GameEngine({
   onState: (state) => {
     if (state.mapId !== currentMap.id) {
@@ -100,6 +140,165 @@ const updateZoomUi = () => {
   zoomInButton.disabled = zoom >= maxThreshold;
 };
 
+const fullscreenDocument = document as Document & {
+  webkitExitFullscreen?: () => Promise<void> | void;
+  webkitFullscreenElement?: Element | null;
+  webkitFullscreenEnabled?: boolean;
+};
+
+let pseudoFullscreenActive = false;
+
+const getFullscreenElement = (): Element | null =>
+  document.fullscreenElement ?? fullscreenDocument.webkitFullscreenElement ?? null;
+
+const isNativeBoardFullscreen = (): boolean => getFullscreenElement() === boardStage;
+
+const isBoardFullscreen = (): boolean => pseudoFullscreenActive || isNativeBoardFullscreen();
+
+const updateFullscreenUi = () => {
+  const active = isBoardFullscreen();
+  fullscreenButton.setAttribute('aria-pressed', active ? 'true' : 'false');
+  fullscreenButton.textContent = active ? 'Exit' : 'Fullscreen';
+  fullscreenButton.setAttribute('aria-label', active ? 'Exit fullscreen' : 'Enter fullscreen');
+};
+
+applyStageAspect(currentMap);
+
+const clearPinchState = () => {
+  if (!pinchState) {
+    return;
+  }
+  const [firstId, secondId] = pinchState.pointerIds;
+  try {
+    canvas.releasePointerCapture(firstId);
+  } catch (error) {
+    // ignore release errors
+  }
+  try {
+    canvas.releasePointerCapture(secondId);
+  } catch (error) {
+    // ignore release errors
+  }
+  pinchState = null;
+};
+
+const resetPinchTracking = () => {
+  clearPinchState();
+  activeTouchPointers.clear();
+};
+
+const applyFullscreenSideEffects = () => {
+  const active = isBoardFullscreen();
+  if (active) {
+    body.classList.add('board-fullscreen-active');
+  } else {
+    body.classList.remove('board-fullscreen-active');
+  }
+  updateFullscreenSizing();
+  updateFullscreenUi();
+  renderer.refreshViewport();
+  renderScene();
+  updateZoomUi();
+  if (!active) {
+    resetPinchTracking();
+  }
+};
+
+const enterPseudoFullscreen = () => {
+  if (pseudoFullscreenActive) {
+    return;
+  }
+  pseudoFullscreenActive = true;
+  boardStage.classList.add('board-stage--pseudo-fullscreen');
+  try {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  } catch (error) {
+    window.scrollTo(0, 0);
+  }
+  applyFullscreenSideEffects();
+};
+
+const exitPseudoFullscreen = () => {
+  if (!pseudoFullscreenActive) {
+    return;
+  }
+  pseudoFullscreenActive = false;
+  boardStage.classList.remove('board-stage--pseudo-fullscreen');
+  applyFullscreenSideEffects();
+};
+
+const requestBoardFullscreen = async (): Promise<void> => {
+  let requestedNative = false;
+  try {
+    if (typeof boardStage.requestFullscreen === 'function') {
+      const result = boardStage.requestFullscreen();
+      requestedNative = true;
+      if (result instanceof Promise) {
+        await result;
+      }
+      if (isNativeBoardFullscreen()) {
+        return;
+      }
+    }
+  } catch (error) {
+    requestedNative = false;
+  }
+  const stageWithWebkit = boardStage as HTMLDivElement & {
+    webkitRequestFullscreen?: () => Promise<void> | void;
+  };
+  try {
+    if (typeof stageWithWebkit.webkitRequestFullscreen === 'function') {
+      const result = stageWithWebkit.webkitRequestFullscreen();
+      requestedNative = true;
+      if (result instanceof Promise) {
+        await result;
+      }
+      if (isNativeBoardFullscreen()) {
+        return;
+      }
+    }
+  } catch (error) {
+    requestedNative = false;
+  }
+  if (!requestedNative || !isNativeBoardFullscreen()) {
+    enterPseudoFullscreen();
+  }
+};
+
+const exitBoardFullscreen = async (): Promise<void> => {
+  if (pseudoFullscreenActive && !isNativeBoardFullscreen()) {
+    exitPseudoFullscreen();
+    return;
+  }
+  try {
+    if (typeof document.exitFullscreen === 'function') {
+      await document.exitFullscreen();
+      return;
+    }
+  } catch (error) {
+    // ignore exit errors
+  }
+  if (typeof fullscreenDocument.webkitExitFullscreen === 'function') {
+    try {
+      await fullscreenDocument.webkitExitFullscreen();
+      return;
+    } catch (error) {
+      // ignore exit errors
+    }
+  }
+  if (pseudoFullscreenActive) {
+    exitPseudoFullscreen();
+  }
+};
+
+const handleFullscreenChange = (_event?: Event) => {
+  if (isNativeBoardFullscreen()) {
+    pseudoFullscreenActive = false;
+    boardStage.classList.remove('board-stage--pseudo-fullscreen');
+  }
+  applyFullscreenSideEffects();
+};
+
 const getCameraCenter = (): Vector => {
   const offset = renderer.getOffset();
   const view = renderer.getViewSize();
@@ -117,6 +316,44 @@ const applyZoomFactor = (factor: number, anchor?: Vector) => {
 
 renderScene();
 updateZoomUi();
+updateFullscreenUi();
+document.addEventListener('fullscreenchange', handleFullscreenChange);
+document.addEventListener('webkitfullscreenchange', handleFullscreenChange as EventListener);
+document.addEventListener('fullscreenerror', () => {
+  if (!isNativeBoardFullscreen() && !pseudoFullscreenActive) {
+    enterPseudoFullscreen();
+  }
+});
+document.addEventListener('webkitfullscreenerror', (() => {
+  if (!isNativeBoardFullscreen() && !pseudoFullscreenActive) {
+    enterPseudoFullscreen();
+  }
+}) as EventListener);
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && pseudoFullscreenActive && !isNativeBoardFullscreen()) {
+    exitPseudoFullscreen();
+  }
+});
+
+const handleViewportResize = () => {
+  if (!isBoardFullscreen()) {
+    return;
+  }
+  updateFullscreenSizing();
+  renderer.refreshViewport();
+};
+
+window.addEventListener('resize', handleViewportResize);
+window.visualViewport?.addEventListener('resize', handleViewportResize);
+window.visualViewport?.addEventListener('scroll', handleViewportResize);
+
+fullscreenButton.addEventListener('click', () => {
+  if (isBoardFullscreen()) {
+    void exitBoardFullscreen();
+  } else {
+    void requestBoardFullscreen();
+  }
+});
 
 const ensureOnlineClient = (): OnlineMatchClient => {
   if (onlineClient) {
@@ -248,6 +485,110 @@ modeButtons.forEach((button) => {
   });
 });
 
+const cancelActiveDrag = () => {
+  if (!isDragging) {
+    return;
+  }
+  const pointerId = dragPointerId;
+  isDragging = false;
+  dragPointerId = null;
+  dragOrigin = null;
+  dragCurrent = null;
+  dragVector = null;
+  if (pointerId !== null) {
+    try {
+      canvas.releasePointerCapture(pointerId);
+    } catch (error) {
+      // ignore release errors
+    }
+  }
+  renderScene();
+};
+
+const beginPinchGesture = () => {
+  if (pinchState || !isBoardFullscreen() || activeTouchPointers.size !== 2) {
+    return;
+  }
+  const entries = Array.from(activeTouchPointers.entries());
+  const [firstEntry, secondEntry] = entries;
+  if (!firstEntry || !secondEntry) {
+    return;
+  }
+  const [firstId, firstPosition] = firstEntry;
+  const [secondId, secondPosition] = secondEntry;
+  const distance = Math.hypot(firstPosition.clientX - secondPosition.clientX, firstPosition.clientY - secondPosition.clientY);
+  if (!Number.isFinite(distance) || distance <= 0) {
+    return;
+  }
+  stopPan();
+  cancelActiveDrag();
+  const center = {
+    x: (firstPosition.clientX + secondPosition.clientX) / 2,
+    y: (firstPosition.clientY + secondPosition.clientY) / 2,
+  };
+  pinchState = {
+    pointerIds: [firstId, secondId],
+    initialDistance: distance,
+    initialZoom: renderer.getZoom(),
+    lastCenterClient: center,
+  };
+  try {
+    canvas.setPointerCapture(firstId);
+  } catch (error) {
+    // ignore capture errors
+  }
+  try {
+    canvas.setPointerCapture(secondId);
+  } catch (error) {
+    // ignore capture errors
+  }
+};
+
+const updatePinchGesture = () => {
+  if (!pinchState) {
+    return;
+  }
+  const [firstId, secondId] = pinchState.pointerIds;
+  const first = activeTouchPointers.get(firstId);
+  const second = activeTouchPointers.get(secondId);
+  if (!first || !second || activeTouchPointers.size !== 2) {
+    if (!first || !second) {
+      clearPinchState();
+    }
+    return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) {
+    return;
+  }
+  const centerClient = {
+    x: (first.clientX + second.clientX) / 2,
+    y: (first.clientY + second.clientY) / 2,
+  };
+  const deltaClientX = centerClient.x - pinchState.lastCenterClient.x;
+  const deltaClientY = centerClient.y - pinchState.lastCenterClient.y;
+  if (deltaClientX !== 0 || deltaClientY !== 0) {
+    const view = renderer.getViewSize();
+    const worldDelta = {
+      x: (-deltaClientX / rect.width) * view.x,
+      y: (-deltaClientY / rect.height) * view.y,
+    };
+    renderer.panBy(worldDelta);
+  }
+  const initialDistance = pinchState.initialDistance;
+  if (initialDistance > 0) {
+    const currentDistance = Math.hypot(first.clientX - second.clientX, first.clientY - second.clientY);
+    if (Number.isFinite(currentDistance) && currentDistance > 0) {
+      const factor = currentDistance / initialDistance;
+      const anchor = toWorldPointFromClient(centerClient.x, centerClient.y);
+      renderer.setZoom(pinchState.initialZoom * factor, anchor);
+    }
+  }
+  pinchState.lastCenterClient = centerClient;
+  renderScene();
+  updateZoomUi();
+};
+
 const beginPan = (event: PointerEvent) => {
   isPanning = true;
   panPointerId = event.pointerId;
@@ -336,6 +677,22 @@ window.addEventListener('blur', () => {
 });
 
 canvas.addEventListener('pointerdown', (event) => {
+  if (event.pointerType === 'touch') {
+    if (isBoardFullscreen() && activeTouchPointers.size >= 2) {
+      // ignore additional touches beyond the first two while fullscreen pinch is active
+    } else {
+      activeTouchPointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+    }
+    if (pinchState) {
+      event.preventDefault();
+      return;
+    }
+    if (isBoardFullscreen() && activeTouchPointers.size === 2) {
+      beginPinchGesture();
+      event.preventDefault();
+      return;
+    }
+  }
   const wantsPanByButton = event.button === 1 || event.button === 2;
   const wantsPanByModifier = panKeyActive && event.button === 0;
   if (wantsPanByButton || wantsPanByModifier) {
@@ -375,6 +732,17 @@ canvas.addEventListener('pointerdown', (event) => {
 });
 
 canvas.addEventListener('pointermove', (event) => {
+  if (event.pointerType === 'touch') {
+    if (pinchState && pinchState.pointerIds.includes(event.pointerId)) {
+      activeTouchPointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+      event.preventDefault();
+      updatePinchGesture();
+      return;
+    }
+    if (isBoardFullscreen()) {
+      activeTouchPointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+    }
+  }
   if (isPanning && event.pointerId === panPointerId) {
     updatePanFromPointer(event);
     return;
@@ -422,6 +790,16 @@ const endDrag = (event: PointerEvent, cancel = false) => {
 };
 
 canvas.addEventListener('pointerup', (event) => {
+  if (event.pointerType === 'touch') {
+    event.preventDefault();
+    activeTouchPointers.delete(event.pointerId);
+    if (pinchState && pinchState.pointerIds.includes(event.pointerId)) {
+      clearPinchState();
+      renderScene();
+      updateZoomUi();
+      return;
+    }
+  }
   if (isPanning && event.pointerId === panPointerId) {
     stopPan();
     return;
@@ -430,6 +808,16 @@ canvas.addEventListener('pointerup', (event) => {
 });
 
 canvas.addEventListener('pointercancel', (event) => {
+  if (event.pointerType === 'touch') {
+    event.preventDefault();
+    activeTouchPointers.delete(event.pointerId);
+    if (pinchState && pinchState.pointerIds.includes(event.pointerId)) {
+      clearPinchState();
+      renderScene();
+      updateZoomUi();
+      return;
+    }
+  }
   if (isPanning && event.pointerId === panPointerId) {
     stopPan();
     return;
@@ -464,12 +852,16 @@ zoomResetButton.addEventListener('click', () => {
 });
 
 function toWorldPoint(event: PointerEvent | WheelEvent): Vector {
+  return toWorldPointFromClient(event.clientX, event.clientY);
+}
+
+function toWorldPointFromClient(clientX: number, clientY: number): Vector {
   const rect = canvas.getBoundingClientRect();
   if (rect.width === 0 || rect.height === 0) {
     return { x: 0, y: 0 };
   }
-  const ratioX = (event.clientX - rect.left) / rect.width;
-  const ratioY = (event.clientY - rect.top) / rect.height;
+  const ratioX = (clientX - rect.left) / rect.width;
+  const ratioY = (clientY - rect.top) / rect.height;
   const offset = renderer.getOffset();
   const view = renderer.getViewSize();
   return {
