@@ -949,6 +949,8 @@ export class GameEngine {
     const actingTeam = unit.team;
     let score = 0;
     const finalLookup = new Map(result.finalUnits.map((entry) => [entry.id, entry]));
+    const actorBefore = baseline.get(unit.id);
+    const map = this.map;
 
     for (const [id, before] of baseline.entries()) {
       const after = finalLookup.get(id);
@@ -996,14 +998,85 @@ export class GameEngine {
     }
 
     const actorFinal = finalLookup.get(unit.id);
+    if (actorBefore && actorFinal) {
+      let beforeNearest = Infinity;
+      let afterNearest = Infinity;
+      let beforeSum = 0;
+      let afterSum = 0;
+      let tracked = 0;
+
+      for (const [id, before] of baseline.entries()) {
+        if (before.team === actingTeam) continue;
+        const enemyAfter = finalLookup.get(id);
+        if (!enemyAfter) continue;
+        tracked += 1;
+        const beforeDist = distance(actorBefore.position, before.position);
+        const afterDist = distance(actorFinal.position, enemyAfter.position);
+        beforeNearest = Math.min(beforeNearest, beforeDist);
+        afterNearest = Math.min(afterNearest, afterDist);
+        beforeSum += beforeDist;
+        afterSum += afterDist;
+      }
+
+      if (tracked > 0) {
+        if (beforeNearest !== Infinity && afterNearest !== Infinity) {
+          score += (beforeNearest - afterNearest) * 1.1;
+          const preferred = unit.def.maxPower * 1.5;
+          if (afterNearest > preferred) {
+            score -= (afterNearest - preferred) * 0.6;
+          }
+        }
+        if (beforeSum > 0 && afterSum > 0) {
+          const averageBefore = beforeSum / tracked;
+          const averageAfter = afterSum / tracked;
+          score += (averageBefore - averageAfter) * 0.5;
+        }
+      }
+    }
+
     if (!actorFinal || !actorFinal.alive) {
       score -= 700;
     } else {
+      const horizontalMargin = Math.min(
+        actorFinal.position.x - actorFinal.def.radius,
+        map.width - actorFinal.position.x - actorFinal.def.radius,
+      );
+      const verticalMargin = Math.min(
+        actorFinal.position.y - actorFinal.def.radius,
+        map.height - actorFinal.position.y - actorFinal.def.radius,
+      );
+      const minMargin = Math.min(horizontalMargin, verticalMargin);
+      const safeMargin = actorFinal.def.radius * 0.75;
+      if (minMargin < safeMargin) {
+        score -= (safeMargin - minMargin) * 120;
+      }
+      if (minMargin < 0) {
+        score -= Math.abs(minMargin) * 200;
+      }
       if (!this.pointInsideCircleBounds(actorFinal.position, actorFinal.def.radius)) {
         score -= 500;
       }
       if (this.isInHazard(actorFinal.position)) {
         score -= 400;
+      }
+
+      let wallPressure = 0;
+      for (const frame of result.frames) {
+        const snapshot = frame.units.find((entry) => entry.id === unit.id);
+        if (!snapshot) continue;
+        const margin = Math.min(
+          snapshot.x - unit.def.radius,
+          map.width - snapshot.x - unit.def.radius,
+          snapshot.y - unit.def.radius,
+          map.height - snapshot.y - unit.def.radius,
+        );
+        const desired = unit.def.radius * 0.3;
+        if (margin < desired) {
+          wallPressure += desired - margin;
+        }
+      }
+      if (wallPressure > 0) {
+        score -= wallPressure * 45;
       }
     }
 
