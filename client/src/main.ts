@@ -23,6 +23,7 @@ const zoomOutButton = document.getElementById('zoom-out') as HTMLButtonElement;
 const zoomResetButton = document.getElementById('zoom-reset') as HTMLButtonElement;
 const zoomIndicator = document.getElementById('zoom-indicator') as HTMLSpanElement;
 const boardStage = document.getElementById('board-stage') as HTMLDivElement;
+const fullscreenButton = document.getElementById('fullscreen-toggle') as HTMLButtonElement;
 const ZOOM_STEP = 1.2;
 const DRAG_INPUT_MULTIPLIER = 1.35;
 
@@ -63,6 +64,15 @@ let isPanning = false;
 let panPointerId: number | null = null;
 let panLast: { x: number; y: number } | null = null;
 let panKeyActive = false;
+type PointerPosition = { clientX: number; clientY: number };
+const activeTouchPointers = new Map<number, PointerPosition>();
+interface PinchState {
+  pointerIds: [number, number];
+  initialDistance: number;
+  initialZoom: number;
+  lastCenterClient: { x: number; y: number };
+}
+let pinchState: PinchState | null = null;
 const engine = new GameEngine({
   onState: (state) => {
     if (state.mapId !== currentMap.id) {
@@ -100,6 +110,95 @@ const updateZoomUi = () => {
   zoomInButton.disabled = zoom >= maxThreshold;
 };
 
+const fullscreenDocument = document as Document & {
+  webkitExitFullscreen?: () => Promise<void> | void;
+  webkitFullscreenElement?: Element | null;
+};
+
+const getFullscreenElement = (): Element | null =>
+  document.fullscreenElement ?? fullscreenDocument.webkitFullscreenElement ?? null;
+
+const isBoardFullscreen = (): boolean => getFullscreenElement() === boardStage;
+
+const updateFullscreenUi = () => {
+  const active = isBoardFullscreen();
+  fullscreenButton.setAttribute('aria-pressed', active ? 'true' : 'false');
+  fullscreenButton.textContent = active ? 'Exit Fullscreen' : 'Fullscreen';
+  fullscreenButton.setAttribute('aria-label', active ? 'Exit fullscreen' : 'Enter fullscreen');
+};
+
+const requestBoardFullscreen = async (): Promise<void> => {
+  try {
+    if (typeof boardStage.requestFullscreen === 'function') {
+      await boardStage.requestFullscreen();
+      return;
+    }
+  } catch (error) {
+    // ignore request errors
+  }
+  const stageWithWebkit = boardStage as HTMLDivElement & {
+    webkitRequestFullscreen?: () => Promise<void> | void;
+  };
+  if (typeof stageWithWebkit.webkitRequestFullscreen === 'function') {
+    try {
+      await stageWithWebkit.webkitRequestFullscreen();
+    } catch (error) {
+      // ignore request errors
+    }
+  }
+};
+
+const exitBoardFullscreen = async (): Promise<void> => {
+  try {
+    if (typeof document.exitFullscreen === 'function') {
+      await document.exitFullscreen();
+      return;
+    }
+  } catch (error) {
+    // ignore exit errors
+  }
+  if (typeof fullscreenDocument.webkitExitFullscreen === 'function') {
+    try {
+      await fullscreenDocument.webkitExitFullscreen();
+    } catch (error) {
+      // ignore exit errors
+    }
+  }
+};
+
+const clearPinchState = () => {
+  if (!pinchState) {
+    return;
+  }
+  const [firstId, secondId] = pinchState.pointerIds;
+  try {
+    canvas.releasePointerCapture(firstId);
+  } catch (error) {
+    // ignore release errors
+  }
+  try {
+    canvas.releasePointerCapture(secondId);
+  } catch (error) {
+    // ignore release errors
+  }
+  pinchState = null;
+};
+
+const resetPinchTracking = () => {
+  clearPinchState();
+  activeTouchPointers.clear();
+};
+
+const handleFullscreenChange = (_event?: Event) => {
+  updateFullscreenUi();
+  renderer.refreshViewport();
+  renderScene();
+  updateZoomUi();
+  if (!isBoardFullscreen()) {
+    resetPinchTracking();
+  }
+};
+
 const getCameraCenter = (): Vector => {
   const offset = renderer.getOffset();
   const view = renderer.getViewSize();
@@ -117,6 +216,17 @@ const applyZoomFactor = (factor: number, anchor?: Vector) => {
 
 renderScene();
 updateZoomUi();
+updateFullscreenUi();
+document.addEventListener('fullscreenchange', handleFullscreenChange);
+document.addEventListener('webkitfullscreenchange', handleFullscreenChange as EventListener);
+
+fullscreenButton.addEventListener('click', () => {
+  if (isBoardFullscreen()) {
+    void exitBoardFullscreen();
+  } else {
+    void requestBoardFullscreen();
+  }
+});
 
 const ensureOnlineClient = (): OnlineMatchClient => {
   if (onlineClient) {
@@ -248,6 +358,107 @@ modeButtons.forEach((button) => {
   });
 });
 
+const cancelActiveDrag = () => {
+  if (!isDragging) {
+    return;
+  }
+  const pointerId = dragPointerId;
+  isDragging = false;
+  dragPointerId = null;
+  dragOrigin = null;
+  dragCurrent = null;
+  dragVector = null;
+  if (pointerId !== null) {
+    try {
+      canvas.releasePointerCapture(pointerId);
+    } catch (error) {
+      // ignore release errors
+    }
+  }
+  renderScene();
+};
+
+const beginPinchGesture = () => {
+  if (pinchState || !isBoardFullscreen() || activeTouchPointers.size !== 2) {
+    return;
+  }
+  const entries = Array.from(activeTouchPointers.entries());
+  const [firstEntry, secondEntry] = entries;
+  if (!firstEntry || !secondEntry) {
+    return;
+  }
+  const [firstId, firstPosition] = firstEntry;
+  const [secondId, secondPosition] = secondEntry;
+  const distance = Math.hypot(firstPosition.clientX - secondPosition.clientX, firstPosition.clientY - secondPosition.clientY);
+  if (!Number.isFinite(distance) || distance <= 0) {
+    return;
+  }
+  stopPan();
+  cancelActiveDrag();
+  const center = {
+    x: (firstPosition.clientX + secondPosition.clientX) / 2,
+    y: (firstPosition.clientY + secondPosition.clientY) / 2,
+  };
+  pinchState = {
+    pointerIds: [firstId, secondId],
+    initialDistance: distance,
+    initialZoom: renderer.getZoom(),
+    lastCenterClient: center,
+  };
+  try {
+    canvas.setPointerCapture(firstId);
+  } catch (error) {
+    // ignore capture errors
+  }
+  try {
+    canvas.setPointerCapture(secondId);
+  } catch (error) {
+    // ignore capture errors
+  }
+};
+
+const updatePinchGesture = () => {
+  if (!pinchState) {
+    return;
+  }
+  const [firstId, secondId] = pinchState.pointerIds;
+  const first = activeTouchPointers.get(firstId);
+  const second = activeTouchPointers.get(secondId);
+  if (!first || !second) {
+    return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) {
+    return;
+  }
+  const centerClient = {
+    x: (first.clientX + second.clientX) / 2,
+    y: (first.clientY + second.clientY) / 2,
+  };
+  const deltaClientX = centerClient.x - pinchState.lastCenterClient.x;
+  const deltaClientY = centerClient.y - pinchState.lastCenterClient.y;
+  if (deltaClientX !== 0 || deltaClientY !== 0) {
+    const view = renderer.getViewSize();
+    const worldDelta = {
+      x: (-deltaClientX / rect.width) * view.x,
+      y: (-deltaClientY / rect.height) * view.y,
+    };
+    renderer.panBy(worldDelta);
+  }
+  const initialDistance = pinchState.initialDistance;
+  if (initialDistance > 0) {
+    const currentDistance = Math.hypot(first.clientX - second.clientX, first.clientY - second.clientY);
+    if (Number.isFinite(currentDistance) && currentDistance > 0) {
+      const factor = currentDistance / initialDistance;
+      const anchor = toWorldPointFromClient(centerClient.x, centerClient.y);
+      renderer.setZoom(pinchState.initialZoom * factor, anchor);
+    }
+  }
+  pinchState.lastCenterClient = centerClient;
+  renderScene();
+  updateZoomUi();
+};
+
 const beginPan = (event: PointerEvent) => {
   isPanning = true;
   panPointerId = event.pointerId;
@@ -336,6 +547,22 @@ window.addEventListener('blur', () => {
 });
 
 canvas.addEventListener('pointerdown', (event) => {
+  if (event.pointerType === 'touch') {
+    if (isBoardFullscreen() && activeTouchPointers.size >= 2) {
+      // ignore additional touches beyond the first two while fullscreen pinch is active
+    } else {
+      activeTouchPointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+    }
+    if (pinchState) {
+      event.preventDefault();
+      return;
+    }
+    if (isBoardFullscreen() && activeTouchPointers.size === 2) {
+      beginPinchGesture();
+      event.preventDefault();
+      return;
+    }
+  }
   const wantsPanByButton = event.button === 1 || event.button === 2;
   const wantsPanByModifier = panKeyActive && event.button === 0;
   if (wantsPanByButton || wantsPanByModifier) {
@@ -375,6 +602,17 @@ canvas.addEventListener('pointerdown', (event) => {
 });
 
 canvas.addEventListener('pointermove', (event) => {
+  if (event.pointerType === 'touch') {
+    if (pinchState && pinchState.pointerIds.includes(event.pointerId)) {
+      activeTouchPointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+      event.preventDefault();
+      updatePinchGesture();
+      return;
+    }
+    if (isBoardFullscreen()) {
+      activeTouchPointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+    }
+  }
   if (isPanning && event.pointerId === panPointerId) {
     updatePanFromPointer(event);
     return;
@@ -422,6 +660,15 @@ const endDrag = (event: PointerEvent, cancel = false) => {
 };
 
 canvas.addEventListener('pointerup', (event) => {
+  if (event.pointerType === 'touch') {
+    activeTouchPointers.delete(event.pointerId);
+    if (pinchState && pinchState.pointerIds.includes(event.pointerId)) {
+      clearPinchState();
+      renderScene();
+      updateZoomUi();
+      return;
+    }
+  }
   if (isPanning && event.pointerId === panPointerId) {
     stopPan();
     return;
@@ -430,6 +677,15 @@ canvas.addEventListener('pointerup', (event) => {
 });
 
 canvas.addEventListener('pointercancel', (event) => {
+  if (event.pointerType === 'touch') {
+    activeTouchPointers.delete(event.pointerId);
+    if (pinchState && pinchState.pointerIds.includes(event.pointerId)) {
+      clearPinchState();
+      renderScene();
+      updateZoomUi();
+      return;
+    }
+  }
   if (isPanning && event.pointerId === panPointerId) {
     stopPan();
     return;
@@ -464,12 +720,16 @@ zoomResetButton.addEventListener('click', () => {
 });
 
 function toWorldPoint(event: PointerEvent | WheelEvent): Vector {
+  return toWorldPointFromClient(event.clientX, event.clientY);
+}
+
+function toWorldPointFromClient(clientX: number, clientY: number): Vector {
   const rect = canvas.getBoundingClientRect();
   if (rect.width === 0 || rect.height === 0) {
     return { x: 0, y: 0 };
   }
-  const ratioX = (event.clientX - rect.left) / rect.width;
-  const ratioY = (event.clientY - rect.top) / rect.height;
+  const ratioX = (clientX - rect.left) / rect.width;
+  const ratioY = (clientY - rect.top) / rect.height;
   const offset = renderer.getOffset();
   const view = renderer.getViewSize();
   return {
