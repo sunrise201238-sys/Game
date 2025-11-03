@@ -20,6 +20,8 @@ const TEAM_UNIT_BASE_COLORS: Record<TeamId, UnitColorPalette> = {
     archer: '#2563eb',
     mage: '#38bdf8',
     'perfect-soldier': '#c084fc',
+    vip: '#facc15',
+    'vip-guardian': '#facc15',
   },
   1: {
     default: '#ea580c',
@@ -27,6 +29,8 @@ const TEAM_UNIT_BASE_COLORS: Record<TeamId, UnitColorPalette> = {
     archer: '#f97316',
     mage: '#f97316',
     'perfect-soldier': '#a855f7',
+    vip: '#facc15',
+    'vip-guardian': '#facc15',
   },
 };
 
@@ -37,6 +41,8 @@ const TEAM_UNIT_CORE_COLORS: Record<TeamId, UnitColorPalette> = {
     archer: 'rgba(129,199,255,0.95)',
     mage: 'rgba(125,211,252,0.95)',
     'perfect-soldier': 'rgba(233,213,255,0.95)',
+    vip: 'rgba(254,240,138,0.95)',
+    'vip-guardian': 'rgba(254,240,138,0.95)',
   },
   1: {
     default: 'rgba(249,115,22,0.95)',
@@ -44,8 +50,12 @@ const TEAM_UNIT_CORE_COLORS: Record<TeamId, UnitColorPalette> = {
     archer: 'rgba(249,115,22,0.95)',
     mage: 'rgba(251,146,60,0.95)',
     'perfect-soldier': 'rgba(233,213,255,0.95)',
+    vip: 'rgba(254,240,138,0.95)',
+    'vip-guardian': 'rgba(254,240,138,0.95)',
   },
 };
+
+const VIP_UNIT_IDS = new Set(['vip', 'vip-guardian']);
 
 interface RenderOptions {
   dragOrigin?: Vector | null;
@@ -723,7 +733,7 @@ export class Renderer {
   ): void {
     const { ctx } = this;
     const radius = unit.def.radius;
-    const isVip = unit.def.id === 'vip';
+    const isVip = VIP_UNIT_IDS.has(unit.def.id);
     ctx.save();
     ctx.translate(unit.position.x, unit.position.y);
     if (highlight) {
@@ -749,7 +759,8 @@ export class Renderer {
       case 'mage':
         this.traceRegularPolygon(6, radius, Math.PI / 6);
         break;
-      case 'vip': {
+      case 'vip':
+      case 'vip-guardian': {
         const gradient = ctx.createRadialGradient(0, 0, radius * 0.2, 0, 0, radius);
         gradient.addColorStop(0, this.lightenColor(fillColor, 0.4));
         gradient.addColorStop(0.85, fillColor);
