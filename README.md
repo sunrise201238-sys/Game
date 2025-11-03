@@ -1,79 +1,75 @@
 https://game-server-w4xj.onrender.com/
 
-# Slingshot Skirmish (Offline Bot Edition)
+# Slingshot Skirmish
 
-This repository now delivers a focused, offline-only build of the round-based slingshot prototype. The entire experience lives in the browser: you drag, the bot answers, and every turn animates immediately with clear, sequential playback. All multiplayer, networking, and anti-cheat code has been removed to keep the project lightweight and easy to reason about.
+Slingshot Skirmish is a turn-based, physics-driven tactics game where teams of elite minions trade slingshot launches across hazardous arenas. The project ships as a Vite + TypeScript canvas client, an Express + WebSocket relay for online matchmaking, and a shared package that synchronizes gameplay types across the stack.​:codex-file-citation[codex-file-citation]{line_range_start=6 line_range_end=23 path=client/package.json git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/package.json#L6-L23"}​​:codex-file-citation[codex-file-citation]{line_range_start=6 line_range_end=17 path=server/package.json git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/server/package.json#L6-L17"}​​:codex-file-citation[codex-file-citation]{line_range_start=5 line_range_end=21 path=shared/package.json git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/shared/package.json#L5-L21"}​
 
-## Repository Layout
+---
 
-```
-client/   – Vite + TypeScript canvas client (single-player vs. bot)
-server/   – Minimal Express wrapper that serves the compiled client (optional for hosting on Render)
-shared/   – Stub package retained for workspace builds (no gameplay logic)
-```
+## Core Gameplay
 
-## Prerequisites
+### Turn Flow & Simulation
+Each match alternates between Team One and Team Two, advancing through a fixed queue so living units act in order while fallen units are skipped without breaking turn cadence.​:codex-file-citation[codex-file-citation]{line_range_start=948 line_range_end=1056 path=client/src/main.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/src/main.ts#L948-L1056"}​ When a unit fires, the engine simulates trajectories frame-by-frame, resolves projectile hits, applies area zones, tallies knockback, and records deaths before the next team takes control.​:codex-file-citation[codex-file-citation]{line_range_start=204 line_range_end=299 path=client/src/engine.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/src/engine.ts#L204-L299"}​​:codex-file-citation[codex-file-citation]{line_range_start=353 line_range_end=457 path=client/src/engine.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/src/engine.ts#L353-L457"}​
 
-- Node.js 20 (the repo includes `.nvmrc` and `.node-version` targeting 20)
-- npm 10 (`npm i -g npm@10`)
+### Modes
+- **VS Bot:** Duel an AI that samples dozens of launch vectors, scoring outcomes to finish targets or shove them into hazards before committing to a play.​:codex-file-citation[codex-file-citation]{line_range_start=847 line_range_end=1096 path=client/src/engine.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/src/engine.ts#L847-L1096"}​
+- **Hotseat:** Share a device as Team One and Team Two rotate turns, keeping the same round structure without automation.​:codex-file-citation[codex-file-citation]{line_range_start=922 line_range_end=1005 path=client/src/main.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/src/main.ts#L922-L1005"}​
+- **Online Matchmaking:** Queue for peer-to-peer bouts, receive match assignments, and exchange drag actions over WebSockets with automatic reconnection and queue persistence.​:codex-file-citation[codex-file-citation]{line_range_start=358 line_range_end=399 path=client/src/main.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/src/main.ts#L358-L399"}​​:codex-file-citation[codex-file-citation]{line_range_start=14 line_range_end=35 path=shared/src/index.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/shared/src/index.ts#L14-L35"}​​:codex-file-citation[codex-file-citation]{line_range_start=183 line_range_end=247 path=server/src/index.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/server/src/index.ts#L183-L247"}​
 
-A project-scoped `.npmrc` pins the public npm registry and disables audit/fund prompts so installs behave consistently on Render and in local containers.
+### Units & Roles
+The default loadout fields three Soldiers, two Archers, and a Mage, each with bespoke stats, projectiles, and area denial tools. Special rosters introduce the Perfect Soldier solo challenge and immovable VIP objectives that immediately decide a round if defeated.​:codex-file-citation[codex-file-citation]{line_range_start=3 line_range_end=118 path=client/src/config.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/src/config.ts#L3-L118"}​​:codex-file-citation[codex-file-citation]{line_range_start=352 line_range_end=409 path=client/src/config.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/src/config.ts#L352-L409"}​
 
-## Install & Build
+### Battlefields
+Seven mirrored arenas range from the open Training Grounds to lava-guarded choke points, twin-bridge islands, VIP forts, and the expansive Perfect Soldier proving ground, each specifying spawn points, lakes, walls, and optional objective units.​:codex-file-citation[codex-file-citation]{line_range_start=120 line_range_end=409 path=client/src/config.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/src/config.ts#L120-L409"}​
+
+### Hazards & Objectives
+Maps mark lethal lakes and structural walls, while the engine checks for out-of-bounds positions or hazard overlaps to knock out units instantly, layering persistent graves and status effects for damage-over-time zones.​:codex-file-citation[codex-file-citation]{line_range_start=120 line_range_end=409 path=client/src/config.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/src/config.ts#L120-L409"}​​:codex-file-citation[codex-file-citation]{line_range_start=377 line_range_end=461 path=client/src/engine.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/src/engine.ts#L377-L461"}​
+
+---
+
+## Controls & Interface
+
+- **Drag-to-Aim:** Click/tap the highlighted unit, pull opposite the desired direction, and release to fire; the engine scales power based on drag distance and camera zoom.​:codex-file-citation[codex-file-citation]{line_range_start=600 line_range_end=790 path=client/src/main.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/src/main.ts#L600-L790"}​
+- **Camera Mastery:** Middle-click/spacebar-drag to pan, use the mouse wheel or buttons for smooth zoom, and reset the camera with a single tap.​:codex-file-citation[codex-file-citation]{line_range_start=620 line_range_end=851 path=client/src/main.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/src/main.ts#L620-L851"}​
+- **Touch & Fullscreen:** Two-finger pinch zoom, one-finger pan, and pseudo-fullscreen fallbacks keep play immersive on mobile while preserving board aspect ratios across devices.​:codex-file-citation[codex-file-citation]{line_range_start=47 line_range_end=205 path=client/src/main.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/src/main.ts#L47-L205"}​​:codex-file-citation[codex-file-citation]{line_range_start=207 line_range_end=356 path=client/src/main.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/src/main.ts#L207-L356"}​​:codex-file-citation[codex-file-citation]{line_range_start=508 line_range_end=590 path=client/src/main.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/src/main.ts#L508-L590"}​
+- **HUD Feedback:** Squad panels surface HP bars, active highlights, match status messaging, and per-map descriptions so players can pivot modes, maps, or rematch instantly.​:codex-file-citation[codex-file-citation]{line_range_start=873 line_range_end=1014 path=client/src/main.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/src/main.ts#L873-L1014"}​
+
+---
+
+## Tech Stack
+
+| Layer   | Details |
+| ------- | ------- |
+| Client  | Vite-powered TypeScript SPA with canvas rendering and custom input handling.​:codex-file-citation[codex-file-citation]{line_range_start=6 line_range_end=23 path=client/package.json git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/package.json#L6-L23"}​​:codex-file-citation[codex-file-citation]{line_range_start=1 line_range_end=107 path=client/src/renderer.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/client/src/renderer.ts#L1-L107"}​ |
+| Server  | Express static host plus WebSocket matchmaking loop with heartbeat pings and action relays.​:codex-file-citation[codex-file-citation]{line_range_start=13 line_range_end=247 path=server/src/index.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/server/src/index.ts#L13-L247"}​ |
+| Shared  | TypeScript types for drag actions, matchmaking messages, and online status codes consumed by both sides.​:codex-file-citation[codex-file-citation]{line_range_start=8 line_range_end=35 path=shared/src/index.ts git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/shared/src/index.ts#L8-L35"}​ |
+
+---
+
+## Getting Started
+
+### Prerequisites
+- Node.js 20+ and npm 9+ (the repo pins npm 10 for reproducible installs).​:codex-file-citation[codex-file-citation]{line_range_start=17 line_range_end=21 path=package.json git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/package.json#L17-L21"}​
+- The workspace uses npm workspaces; no global installs beyond the Node/npm requirement are necessary.​:codex-file-citation[codex-file-citation]{line_range_start=4 line_range_end=15 path=package.json git_url="https://github.com/sunrise201238-sys/Game/blob/Mobile_Test/package.json#L4-L15"}​
+
+### Install & Build
 
 ```bash
-nvm use 20 || nvm install 20
-npm i -g npm@10
-npm run bootstrap        # npm install --workspaces
-npm run build            # builds shared (stub), server, and client bundles
-```
+npm run bootstrap   # install dependencies across client, server, and shared packages
+npm run build       # compile shared types, server, then client bundles
 
-### Local Playtest
+Local Play
+npm start                       # serve the production bundle at http://localhost:3001
+npm run dev --workspace client  # launch the Vite dev server with hot reload
 
-After building, launch the static server (optional) and open the client in your browser:
+Online Service & Deployment
+The server exposes /healthz, serves client/dist, and manages /match WebSocket connections for player pairing, queue cancellation, and relaying drag actions in real time. Render-friendly scripts bootstrap a local Node 20 toolchain, install workspaces with audits disabled, build all packages, and start the compiled server with environment-safe checks.
 
-```bash
-npm start                # serves client/dist on http://localhost:3001
-```
+Repository Layout
+client/   - Canvas tactics client with renderer, engine host, and input/UI loops
+server/   - Express + ws relay for static hosting and matchmaking
+shared/   - TypeScript definitions shared by client and server
+scripts/  - Render deployment helpers (install, build, start)
 
-Alternatively you can run the Vite dev server directly from the client workspace:
-
-```bash
-npm run dev --workspace client
-```
-
-## Gameplay Overview
-
-- **Modes:** Choose between **VS Bot** (default) and **Hotseat**. In hotseat, Team One and Team Two alternate shots on the same device; in bot mode the AI handles Team Two.
-- **Turn order:** A coin flip is implicit in the first round—the local player (or Team One) opens. Teams alternate strictly (Team One → Team Two → …) and each team cycles through its fixed queue of seven minions; fallen units are skipped but turns are never lost.
-- **Controls & aiming:** Click/touch the highlighted minion, drag away from your intended direction, and release. A colored guide shows travel direction and, for mages, the projected area-of-effect landing zone before you let go.
-- **Roster:** Each side fields three Soldiers, three Archers, and a Mage. Soldiers brawl, Archers fire piercing projectiles, and Mages drop softened AOEs with dramatically reduced damage for balance.
-- **Maps:** Pick from five arenas—including the new **Twin Bridge** canal map—each with mirrored spawn templates, walls, and optional hazards. A pure Training Grounds layout is available for fundamentals.
-- **Physics:** Everything plays out in a top-down space with friction, ricocheting walls, friendly shoves, enemy knockback, and instant defeats for units that finish inside lakes or off the board. Graves mark fallen units without blocking movement.
-- **Bot:** The AI samples multiple launch vectors with the shared simulator, scoring each candidate to push enemies into hazards or finish weakened targets. There are no timers; the bot waits for animations to settle before acting.
-- **HUD:** Squad panels show per-unit health bars, active-unit highlights, and persistent restart/map/mode controls so you can reset or swap configurations at any time.
-
-### Mobile & Fullscreen Tips
-
-- **Fullscreen play:** Tap the **Fullscreen** button beside the zoom controls to expand the board. On platforms without native fullscreen support (such as mobile Safari), the game switches to an immersive pseudo-fullscreen mode that locks the viewport and centers the board.
-- **Aspect ratio safety:** The battlefield keeps its native aspect ratio while fullscreen, introducing letterboxing if the screen shape is taller or wider than the map. This avoids the "stretch" effect and prevents runaway scaling.
-- **Touch gestures:** Drag with one finger to pan the camera, and pinch with two fingers to zoom while fullscreen. Single-finger drags never trigger zoom, and double-tap zooming is blocked so the browser won’t unexpectedly magnify the page mid-match.
-- **Overscroll protection:** The app contains scrolling and navigation gestures to the canvas during play so that swiping or panning the map doesn’t cause the browser UI to appear or the page to navigate away.
-
-## Render Deployment
-
-Render can continue to host the project using the helper scripts already referenced in the repo:
-
-- **Build command:** `./scripts/render-build.sh`
-- **Start command:** `./scripts/render-start.sh`
-- **Environment variables:** Only `PORT` is required (provided automatically by Render). No other server-side configuration is needed now that the experience is offline.
-
-The server simply serves the static bundle from `client/dist` and exposes `/healthz` for Render health checks.
-
-## Workspace Notes
-
-The shared workspace remains as a stub so the npm workspace layout does not need to change. It produces a trivial module during the build step and has no runtime impact on the client.
-
-## License
-
+License
 MIT
