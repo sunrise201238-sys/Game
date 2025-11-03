@@ -108,6 +108,7 @@ export interface StatusEffect {
   unitId: string;
   remainingTurns: number;
   damagePerTurn: number;
+  expiresTurn: number;
 }
 
 export interface GameState {

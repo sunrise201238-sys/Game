@@ -62,6 +62,7 @@ export class GameEngine {
   private mode: GameMode;
   private playerTeam: TeamId;
   private onlineReady = true;
+  private turnCounter = 0;
 
   constructor(
     listeners: EngineListeners,
@@ -75,6 +76,7 @@ export class GameEngine {
     this.loadout = [...loadout];
     this.mode = mode;
     this.playerTeam = playerTeam;
+    this.turnCounter = 0;
     this.state = this.createInitialState();
   }
 
@@ -94,6 +96,7 @@ export class GameEngine {
     if (playerTeam !== undefined) {
       this.playerTeam = playerTeam;
     }
+    this.turnCounter = 0;
     this.state = this.createInitialState();
     this.emitState();
   }
@@ -262,6 +265,7 @@ export class GameEngine {
       this.state.round += 1;
     }
 
+    this.turnCounter += 1;
     const statusOutcome = this.applyTurnStartEffects(this.state.activeTeam);
     if (statusOutcome === 'draw') {
       this.handleDraw();
@@ -364,7 +368,8 @@ export class GameEngine {
     const inflictedStatuses = new Map<string, StatusEffect>();
     const activeStatusSnapshot = new Map<string, StatusEffect>();
     for (const status of this.state.statuses) {
-      if (status.remainingTurns > 0) {
+      this.ensureStatusMetadata(status);
+      if (this.isStatusActive(status)) {
         activeStatusSnapshot.set(status.unitId, { ...status });
       }
     }
@@ -442,15 +447,13 @@ export class GameEngine {
       processedZoneHits.add(key);
 
       const existingEffect = inflictedStatuses.get(unit.id) ?? activeStatusSnapshot.get(unit.id);
-      if (existingEffect && existingEffect.remainingTurns > 0 && existingEffect.damagePerTurn >= zone.dotDamage) {
-        return;
+      if (existingEffect) {
+        if (this.isStatusActive(existingEffect) && existingEffect.damagePerTurn >= zone.dotDamage) {
+          return;
+        }
       }
 
-      const newEffect: StatusEffect = {
-        unitId: unit.id,
-        remainingTurns: zone.dotDuration,
-        damagePerTurn: zone.dotDamage,
-      };
+      const newEffect = this.createStatusEffect(unit.id, zone.dotDuration, zone.dotDamage);
       inflictedStatuses.set(unit.id, newEffect);
       activeStatusSnapshot.set(unit.id, { ...newEffect });
     };
@@ -762,15 +765,41 @@ export class GameEngine {
     this.refreshPersistentZoneVisuals();
   }
 
+  private createStatusEffect(unitId: string, duration: number, damage: number): StatusEffect {
+    return {
+      unitId,
+      remainingTurns: duration,
+      damagePerTurn: damage,
+      expiresTurn: this.turnCounter + duration * 2,
+    };
+  }
+
+  private ensureStatusMetadata(effect: StatusEffect): void {
+    if (!Number.isFinite(effect.expiresTurn)) {
+      effect.expiresTurn = this.turnCounter + Math.max(effect.remainingTurns, 0) * 2;
+    }
+    if (effect.remainingTurns < 0) {
+      effect.remainingTurns = 0;
+    }
+  }
+
+  private isStatusActive(effect: StatusEffect): boolean {
+    this.ensureStatusMetadata(effect);
+    return effect.remainingTurns > 0 || this.turnCounter < effect.expiresTurn;
+  }
+
   private applyStatusInflictions(effects: StatusEffect[]): void {
     if (!effects.length) return;
     for (const effect of effects) {
+      this.ensureStatusMetadata(effect);
       const unit = this.state.units.find((u) => u.id === effect.unitId && u.alive);
       if (!unit) continue;
       const existing = this.state.statuses.find((status) => status.unitId === effect.unitId);
       if (existing) {
+        this.ensureStatusMetadata(existing);
         existing.remainingTurns = Math.max(existing.remainingTurns, effect.remainingTurns);
         existing.damagePerTurn = Math.max(existing.damagePerTurn, effect.damagePerTurn);
+        existing.expiresTurn = Math.max(existing.expiresTurn, effect.expiresTurn);
       } else {
         this.state.statuses.push({ ...effect });
       }
@@ -782,35 +811,37 @@ export class GameEngine {
     const remaining: StatusEffect[] = [];
     const deaths: string[] = [];
     for (const effect of this.state.statuses) {
+      this.ensureStatusMetadata(effect);
       const unit = this.state.units.find((u) => u.id === effect.unitId && u.alive);
       if (!unit) continue;
-      if (unit.team !== team) {
-        remaining.push(effect);
-        continue;
-      }
-      if (effect.remainingTurns <= 0) {
+      if (this.turnCounter > effect.expiresTurn) {
         const renewed = this.findZoneRenewalForUnit(unit);
         if (renewed) {
           remaining.push(renewed);
         }
         continue;
       }
-      unit.hp = Math.max(0, unit.hp - effect.damagePerTurn);
-      effect.remainingTurns -= 1;
-      if (unit.hp <= 0) {
-        unit.alive = false;
-        deaths.push(unit.id);
+      const isUnitTurn = unit.team === team;
+      if (isUnitTurn && effect.remainingTurns > 0) {
+        unit.hp = Math.max(0, unit.hp - effect.damagePerTurn);
+        effect.remainingTurns -= 1;
+        if (unit.hp <= 0) {
+          unit.alive = false;
+          deaths.push(unit.id);
+        }
       }
       if (!unit.alive) {
         continue;
       }
-      if (effect.remainingTurns > 0) {
+      const stillBurning = effect.remainingTurns > 0;
+      const awaitingExpiry = this.turnCounter < effect.expiresTurn;
+      if (stillBurning || awaitingExpiry) {
         remaining.push(effect);
-      } else {
-        const renewed = this.findZoneRenewalForUnit(unit);
-        if (renewed) {
-          remaining.push(renewed);
-        }
+        continue;
+      }
+      const renewed = this.findZoneRenewalForUnit(unit);
+      if (renewed) {
+        remaining.push(renewed);
       }
     }
     this.state.statuses = remaining;
@@ -832,11 +863,7 @@ export class GameEngine {
       }
     }
     if (!bestZone) return null;
-    return {
-      unitId: unit.id,
-      remainingTurns: bestZone.dotDuration,
-      damagePerTurn: bestZone.dotDamage,
-    };
+    return this.createStatusEffect(unit.id, bestZone.dotDuration, bestZone.dotDamage);
   }
 
   private reduceZoneDurationsAfterRound(): void {

@@ -336,6 +336,7 @@ export class Renderer {
       0: 'rgba(125,211,252,0.9)',
       1: 'rgba(253,186,116,0.9)',
     };
+    const burningUnits = new Set(state.statuses.map((status) => status.unitId));
 
     for (const unit of state.units) {
       if (!unit.alive) {
@@ -360,6 +361,9 @@ export class Renderer {
         this.drawHighlightAura(unit, highlightAura[unit.team] ?? strokeColor);
       }
       this.drawHpBar(unit);
+      if (burningUnits.has(unit.id)) {
+        this.drawBurnIcon(unit);
+      }
     }
   }
 
@@ -387,6 +391,40 @@ export class Renderer {
     ctx.fillRect(x, y, width * ratio, HP_BAR_HEIGHT);
     ctx.strokeStyle = 'rgba(255,255,255,0.7)';
     ctx.strokeRect(x, y, width, HP_BAR_HEIGHT);
+  }
+
+  private drawBurnIcon(unit: UnitState): void {
+    const { ctx } = this;
+    const baseX = unit.position.x;
+    const baseY = unit.position.y - unit.def.radius - HP_BAR_HEIGHT - 12;
+    const flameSize = Math.max(10, unit.def.radius * 0.6);
+    ctx.save();
+    ctx.translate(baseX, baseY);
+    const scale = flameSize / 12;
+    ctx.scale(scale, scale);
+    ctx.beginPath();
+    ctx.shadowColor = 'rgba(251,146,60,0.55)';
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = 'rgba(251,146,60,0.9)';
+    ctx.moveTo(0, -8);
+    ctx.quadraticCurveTo(6, -4, 3.5, 3.5);
+    ctx.quadraticCurveTo(1.5, 8, 0, 8);
+    ctx.quadraticCurveTo(-1.5, 8, -3.5, 3.5);
+    ctx.quadraticCurveTo(-6, -4, 0, -8);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(255,244,199,0.92)';
+    ctx.beginPath();
+    ctx.moveTo(0, -3.5);
+    ctx.quadraticCurveTo(2.5, -1.5, 1.3, 3.5);
+    ctx.quadraticCurveTo(0.5, 6.5, 0, 6.5);
+    ctx.quadraticCurveTo(-0.5, 6.5, -1.3, 3.5);
+    ctx.quadraticCurveTo(-2.5, -1.5, 0, -3.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   }
 
   private drawGraves(graves: GraveMarker[]): void {
