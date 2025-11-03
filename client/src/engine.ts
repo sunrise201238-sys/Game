@@ -362,6 +362,12 @@ export class GameEngine {
     const zoneClones: ZoneClone[] = [...existingZones];
     const frameList: SimulationFrame[] = [];
     const inflictedStatuses = new Map<string, StatusEffect>();
+    const activeStatusSnapshot = new Map<string, StatusEffect>();
+    for (const status of this.state.statuses) {
+      if (status.remainingTurns > 0) {
+        activeStatusSnapshot.set(status.unitId, { ...status });
+      }
+    }
 
     const attacker = clones.find((u) => u.id === action.unitId);
     if (!attacker) {
@@ -433,19 +439,25 @@ export class GameEngine {
       if (!unit.alive || unit.team === zone.ownerTeam) return;
       const key = `${zone.id}:${unit.id}`;
       if (processedZoneHits.has(key)) return;
+
+      const existingEffect = inflictedStatuses.get(unit.id) ?? activeStatusSnapshot.get(unit.id);
+      if (existingEffect && existingEffect.remainingTurns > 0 && existingEffect.damagePerTurn >= zone.dotDamage) {
+        processedZoneHits.add(key);
+        return;
+      }
+
       processedZoneHits.add(key);
       unit.hp = Math.max(0, unit.hp - zone.dotDamage);
       if (unit.hp === 0) {
         unit.alive = false;
       }
-      const existing = inflictedStatuses.get(unit.id);
-      if (!existing || existing.damagePerTurn <= zone.dotDamage) {
-        inflictedStatuses.set(unit.id, {
-          unitId: unit.id,
-          remainingTurns: zone.dotDuration,
-          damagePerTurn: zone.dotDamage,
-        });
-      }
+      const newEffect: StatusEffect = {
+        unitId: unit.id,
+        remainingTurns: zone.dotDuration,
+        damagePerTurn: zone.dotDamage,
+      };
+      inflictedStatuses.set(unit.id, newEffect);
+      activeStatusSnapshot.set(unit.id, newEffect);
     };
 
     const checkZoneContacts = () => {
