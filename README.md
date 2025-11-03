@@ -53,6 +53,13 @@ npm run dev --workspace client
 - **Bot:** The AI samples multiple launch vectors with the shared simulator, scoring each candidate to push enemies into hazards or finish weakened targets. There are no timers; the bot waits for animations to settle before acting.
 - **HUD:** Squad panels show per-unit health bars, active-unit highlights, and persistent restart/map/mode controls so you can reset or swap configurations at any time.
 
+### Mobile & Fullscreen Tips
+
+- **Fullscreen play:** Tap the **Fullscreen** button beside the zoom controls to expand the board. On platforms without native fullscreen support (such as mobile Safari), the game switches to an immersive pseudo-fullscreen mode that locks the viewport and centers the board.
+- **Aspect ratio safety:** The battlefield keeps its native aspect ratio while fullscreen, introducing letterboxing if the screen shape is taller or wider than the map. This avoids the "stretch" effect and prevents runaway scaling.
+- **Touch gestures:** Drag with one finger to pan the camera, and pinch with two fingers to zoom while fullscreen. Single-finger drags never trigger zoom, and double-tap zooming is blocked so the browser won’t unexpectedly magnify the page mid-match.
+- **Overscroll protection:** The app contains scrolling and navigation gestures to the canvas during play so that swiping or panning the map doesn’t cause the browser UI to appear or the page to navigate away.
+
 ## Render Deployment
 
 Render can continue to host the project using the helper scripts already referenced in the repo:
