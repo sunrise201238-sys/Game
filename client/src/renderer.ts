@@ -104,10 +104,11 @@ export class Renderer {
     const { width, height } = this.map;
     const parent = this.canvas.parentElement as HTMLElement | null;
     const parentRect = parent?.getBoundingClientRect();
-    const measuredWidth = parentRect?.width ?? this.canvas.getBoundingClientRect().width;
-    const fallbackWidth = parent?.clientWidth ?? this.canvas.clientWidth;
+    const measuredWidth = parentRect?.width;
+    const fallbackWidth = parent?.clientWidth;
+    const canvasRectWidth = this.canvas.getBoundingClientRect().width;
+    const widthCandidates = [canvasRectWidth, measuredWidth, fallbackWidth, this.canvas.clientWidth, width];
     let resolvedWidth = width;
-    const widthCandidates = [measuredWidth, fallbackWidth];
     for (const candidate of widthCandidates) {
       if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {
         resolvedWidth = candidate;
