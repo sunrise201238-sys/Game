@@ -47,6 +47,24 @@ mapSelect.value = currentMap.id;
 const renderer = new Renderer(canvas, currentMap);
 const zoomLimits = renderer.getZoomLimits();
 
+const prefersPseudoFullscreen = (() => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  const touchPoints = navigator.maxTouchPoints ?? 0;
+  const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+  const isTouchCentric = coarsePointer || touchPoints > 0 || 'ontouchstart' in window;
+  if (!isTouchCentric) {
+    return false;
+  }
+  const maxScreenDimension = Math.max(window.screen?.width ?? 0, window.screen?.height ?? 0);
+  const userAgent = navigator.userAgent ?? '';
+  const isiPadLike = /iPad|iPadOS/i.test(userAgent) ||
+    (userAgent.includes('Macintosh') && touchPoints > 1);
+  const isLargeTouchDisplay = maxScreenDimension >= 1000;
+  return isiPadLike || isLargeTouchDisplay;
+})();
+
 const updateFullscreenSizing = () => {
   if (!boardStage) {
     return;
@@ -228,6 +246,10 @@ const exitPseudoFullscreen = () => {
 };
 
 const requestBoardFullscreen = async (): Promise<void> => {
+  if (prefersPseudoFullscreen) {
+    enterPseudoFullscreen();
+    return;
+  }
   let requestedNative = false;
   try {
     if (typeof boardStage.requestFullscreen === 'function') {

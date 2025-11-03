@@ -20,6 +20,8 @@ const TEAM_UNIT_BASE_COLORS: Record<TeamId, UnitColorPalette> = {
     archer: '#2563eb',
     mage: '#38bdf8',
     'perfect-soldier': '#c084fc',
+    vip: '#fbbf24',
+    'vip-guardian': '#fbbf24',
   },
   1: {
     default: '#ea580c',
@@ -27,6 +29,8 @@ const TEAM_UNIT_BASE_COLORS: Record<TeamId, UnitColorPalette> = {
     archer: '#f97316',
     mage: '#f97316',
     'perfect-soldier': '#a855f7',
+    vip: '#fbbf24',
+    'vip-guardian': '#fbbf24',
   },
 };
 
@@ -37,6 +41,8 @@ const TEAM_UNIT_CORE_COLORS: Record<TeamId, UnitColorPalette> = {
     archer: 'rgba(129,199,255,0.95)',
     mage: 'rgba(125,211,252,0.95)',
     'perfect-soldier': 'rgba(233,213,255,0.95)',
+    vip: 'rgba(254,240,138,0.95)',
+    'vip-guardian': 'rgba(254,240,138,0.95)',
   },
   1: {
     default: 'rgba(249,115,22,0.95)',
@@ -44,8 +50,17 @@ const TEAM_UNIT_CORE_COLORS: Record<TeamId, UnitColorPalette> = {
     archer: 'rgba(249,115,22,0.95)',
     mage: 'rgba(251,146,60,0.95)',
     'perfect-soldier': 'rgba(233,213,255,0.95)',
+    vip: 'rgba(254,240,138,0.95)',
+    'vip-guardian': 'rgba(254,240,138,0.95)',
   },
 };
+
+const VIP_UNIT_IDS = new Set(['vip', 'vip-guardian']);
+const VIP_FILL_COLOR = '#fde047';
+const VIP_STROKE_COLOR = '#fbbf24';
+const VIP_HIGHLIGHT_STROKE = '#fef3c7';
+const VIP_CORE_COLOR = 'rgba(254,240,138,0.95)';
+const VIP_HIGHLIGHT_AURA = 'rgba(253,224,71,0.9)';
 
 interface RenderOptions {
   dragOrigin?: Vector | null;
@@ -350,15 +365,23 @@ export class Renderer {
           state.phase !== 'ended'
       );
 
+      const isVipUnit = VIP_UNIT_IDS.has(unit.def.id);
       const baseColor = this.getUnitBaseColor(unit);
-      const fillColor = this.lightenColor(baseColor, unit.team === 0 ? 0.1 : -0.05);
-      const strokeColor = isHighlight ? highlightStroke[unit.team] ?? '#ffffff' : teamStroke[unit.team] ?? '#ffffff';
-      const centerColor = this.getUnitCoreColor(unit, teamCore);
+      let fillColor = this.lightenColor(baseColor, unit.team === 0 ? 0.1 : -0.05);
+      let strokeColor = isHighlight ? highlightStroke[unit.team] ?? '#ffffff' : teamStroke[unit.team] ?? '#ffffff';
+      let centerColor = this.getUnitCoreColor(unit, teamCore);
+
+      if (isVipUnit) {
+        fillColor = VIP_FILL_COLOR;
+        strokeColor = isHighlight ? VIP_HIGHLIGHT_STROKE : VIP_STROKE_COLOR;
+        centerColor = VIP_CORE_COLOR;
+      }
       const lineWidth = isHighlight ? 4 : 3;
 
       this.drawUnitShape(unit, fillColor, strokeColor, centerColor, lineWidth, isHighlight);
       if (isHighlight) {
-        this.drawHighlightAura(unit, highlightAura[unit.team] ?? strokeColor);
+        const auraColor = isVipUnit ? VIP_HIGHLIGHT_AURA : highlightAura[unit.team] ?? strokeColor;
+        this.drawHighlightAura(unit, auraColor);
       }
       this.drawHpBar(unit);
       if (burningUnits.has(unit.id)) {
@@ -723,7 +746,7 @@ export class Renderer {
   ): void {
     const { ctx } = this;
     const radius = unit.def.radius;
-    const isVip = unit.def.id === 'vip';
+    const isVip = VIP_UNIT_IDS.has(unit.def.id);
     ctx.save();
     ctx.translate(unit.position.x, unit.position.y);
     if (highlight) {
@@ -749,7 +772,8 @@ export class Renderer {
       case 'mage':
         this.traceRegularPolygon(6, radius, Math.PI / 6);
         break;
-      case 'vip': {
+      case 'vip':
+      case 'vip-guardian': {
         const gradient = ctx.createRadialGradient(0, 0, radius * 0.2, 0, 0, radius);
         gradient.addColorStop(0, this.lightenColor(fillColor, 0.4));
         gradient.addColorStop(0.85, fillColor);
