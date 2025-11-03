@@ -1,6 +1,6 @@
 https://game-server-w4xj.onrender.com/
 
-# Slingshot Skirmish
+# Slingshot Skirmish: A Strategic Mini Game
 
 ## Game Overview
 Slingshot Skirmish is a turn-based arena battler where two teams of units face off on 2D maps. Each combatant acts by dragging to aim a slingshot vector that launches the active unit, turning momentum, collisions, and abilities into tactical tools. Teams alternate turns, advancing the round counter each time control returns to Team 0, and victory is awarded when all opposing controllable units are defeated or a sudden-death VIP objective is accomplished.
