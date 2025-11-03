@@ -67,7 +67,7 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
     name: 'Perfect Soldier',
     color: '#c084fc',
     radius: 16,
-    maxHp: 400,
+    maxHp: 250,
     collideDamage: 20,
     knockback: 500,
     recoil: 110,
