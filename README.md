@@ -69,9 +69,11 @@ Maps mark lethal lakes and structural walls, while the engine checks for out-of-
 npm run bootstrap   # install dependencies across client, server, and shared packages
 npm run build       # compile shared types, server, then client bundles
 
-**Local Play**
+🎮 Local Play
 npm start                       # serve the production bundle at http://localhost:3001
 npm run dev --workspace client  # launch the Vite dev server with hot reload
 
-**Online Service & Deployment**
-The server exposes /healthz, serves client/dist, and manages /match WebSocket connections for player pairing, queue cancellation, and relaying drag actions in real time. Render-friendly scripts bootstrap a local Node 20 toolchain, install workspaces with audits disabled, build all packages, and start the compiled server with environment-safe checks.
+🌐 Online Service & Deployment
+
+The server exposes /healthz, serves client/dist, and manages /match WebSocket connections for player pairing, queue cancellation, and relaying drag actions in real time.
+Render-friendly scripts bootstrap a local Node 20 toolchain, install workspaces with audits disabled, build all packages, and start the compiled server with environment-safe checks.
