@@ -51,7 +51,7 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
     aoe: {
       radius: 110,
       duration: 3,
-      dotDamage: 15,
+      dotDamage: 12,
       dotDuration: 3,
       placementRange: 280,
       travelScale: 1.15,
