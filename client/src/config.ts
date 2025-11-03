@@ -67,7 +67,7 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
     name: 'Perfect Soldier',
     color: '#c084fc',
     radius: 16,
-    maxHp: 250,
+    maxHp: 300,
     collideDamage: 20,
     knockback: 500,
     recoil: 110,
@@ -240,7 +240,7 @@ export const MAPS: MapDefinition[] = [
   {
     id: 'lone-bridge',
     name: 'Lone Island',
-    description: 'One resilient isle links mirrored reservoirs—control the solitary land bridge.',
+    description: 'A small island where rival forces clash with nowhere to run.',
     width: 2048,
     height: 1152,
     lakes: [
@@ -270,7 +270,7 @@ export const MAPS: MapDefinition[] = [
   {
     id: 'bridge',
     name: 'Bridge',
-    description: 'Face off across a straight causeway suspended between mirrored lakes.',
+    description: 'Face off across a straight causeway where one clean hit sends foes over the edge.',
     width: 1024,
     height: 576,
     // Lakes only occupy the middle third; left & right columns are LAND.
