@@ -16,6 +16,7 @@ import type {
   ZoneState,
   StatusEffect,
   MapDefinition,
+  DeferredStatusEffect,
 } from './types';
 
 const PLAYER_TEAM: TeamId = 0;
@@ -274,6 +275,8 @@ export class GameEngine {
       return;
     }
 
+    this.applyDeferredStatusInflictions(result.deferredStatusRenewals, this.state.activeTeam);
+
     const otherAlive = this.hasAliveUnits(otherTeam);
     const actingAlive = this.hasAliveUnits(actingTeam);
     if (!otherAlive && !actingAlive) {
@@ -362,6 +365,13 @@ export class GameEngine {
     const zoneClones: ZoneClone[] = [...existingZones];
     const frameList: SimulationFrame[] = [];
     const inflictedStatuses = new Map<string, StatusEffect>();
+    const deferredStatusRenewals = new Map<string, { effect: StatusEffect; zoneId: string }>();
+    const activeStatusSnapshot = new Map<string, StatusEffect>();
+    for (const status of this.state.statuses) {
+      if (status.remainingTurns > 0) {
+        activeStatusSnapshot.set(status.unitId, { ...status });
+      }
+    }
 
     const attacker = clones.find((u) => u.id === action.unitId);
     if (!attacker) {
@@ -371,6 +381,7 @@ export class GameEngine {
         deaths: [],
         zonesToAdd: [],
         inflictedStatuses: [],
+        deferredStatusRenewals: [],
       };
     }
 
@@ -433,19 +444,38 @@ export class GameEngine {
       if (!unit.alive || unit.team === zone.ownerTeam) return;
       const key = `${zone.id}:${unit.id}`;
       if (processedZoneHits.has(key)) return;
+
+      const existingEffect = inflictedStatuses.get(unit.id) ?? activeStatusSnapshot.get(unit.id);
+      if (existingEffect && existingEffect.remainingTurns > 0 && existingEffect.damagePerTurn >= zone.dotDamage) {
+        processedZoneHits.add(key);
+        if (existingEffect.remainingTurns === 1) {
+          const queued = deferredStatusRenewals.get(unit.id);
+          if (!queued || queued.effect.damagePerTurn < zone.dotDamage) {
+            deferredStatusRenewals.set(unit.id, {
+              zoneId: zone.id,
+              effect: {
+                unitId: unit.id,
+                remainingTurns: zone.dotDuration,
+                damagePerTurn: zone.dotDamage,
+              },
+            });
+          }
+        }
+        return;
+      }
+
       processedZoneHits.add(key);
       unit.hp = Math.max(0, unit.hp - zone.dotDamage);
       if (unit.hp === 0) {
         unit.alive = false;
       }
-      const existing = inflictedStatuses.get(unit.id);
-      if (!existing || existing.damagePerTurn <= zone.dotDamage) {
-        inflictedStatuses.set(unit.id, {
-          unitId: unit.id,
-          remainingTurns: zone.dotDuration,
-          damagePerTurn: zone.dotDamage,
-        });
-      }
+      const newEffect: StatusEffect = {
+        unitId: unit.id,
+        remainingTurns: zone.dotDuration,
+        damagePerTurn: zone.dotDamage,
+      };
+      inflictedStatuses.set(unit.id, newEffect);
+      activeStatusSnapshot.set(unit.id, newEffect);
     };
 
     const checkZoneContacts = () => {
@@ -692,6 +722,10 @@ export class GameEngine {
       deaths,
       zonesToAdd: newZones,
       inflictedStatuses: Array.from(inflictedStatuses.values()),
+      deferredStatusRenewals: Array.from(deferredStatusRenewals.values(), (entry) => ({
+        zoneId: entry.zoneId,
+        ...entry.effect,
+      })),
     };
   }
 
@@ -766,6 +800,31 @@ export class GameEngine {
         existing.damagePerTurn = effect.damagePerTurn;
       } else {
         this.state.statuses.push({ ...effect });
+      }
+    }
+  }
+
+  private applyDeferredStatusInflictions(effects: DeferredStatusEffect[], team: TeamId): void {
+    if (!effects.length) return;
+    if (this.state.zones.length === 0) return;
+    const zonesById = new Map(this.state.zones.map((zone) => [zone.id, zone]));
+    for (const effect of effects) {
+      const unit = this.state.units.find((u) => u.id === effect.unitId && u.alive);
+      if (!unit || unit.team !== team) continue;
+      const zone = zonesById.get(effect.zoneId);
+      if (!zone || zone.ownerTeam === unit.team) continue;
+      const dist = distance(unit.position, zone.center);
+      if (dist > zone.radius + unit.def.radius * 0.5) continue;
+      const existing = this.state.statuses.find((status) => status.unitId === effect.unitId);
+      if (existing) {
+        existing.remainingTurns = Math.max(existing.remainingTurns, effect.remainingTurns);
+        existing.damagePerTurn = Math.max(existing.damagePerTurn, effect.damagePerTurn);
+      } else {
+        this.state.statuses.push({
+          unitId: effect.unitId,
+          remainingTurns: effect.remainingTurns,
+          damagePerTurn: effect.damagePerTurn,
+        });
       }
     }
   }

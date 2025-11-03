@@ -110,6 +110,13 @@ export interface StatusEffect {
   damagePerTurn: number;
 }
 
+export interface DeferredStatusEffect {
+  unitId: string;
+  zoneId: string;
+  remainingTurns: number;
+  damagePerTurn: number;
+}
+
 export interface GameState {
   units: UnitState[];
   graves: GraveMarker[];
@@ -163,6 +170,7 @@ export interface SimulationResult {
   deaths: string[];
   zonesToAdd: ZoneState[];
   inflictedStatuses: StatusEffect[];
+  deferredStatusRenewals: DeferredStatusEffect[];
 }
 
 export type { DragAction, TeamId, Vector };
