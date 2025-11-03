@@ -1,4 +1,4 @@
-import type { MapDefinition, UnitDefinition } from './types';
+import type { MapDefinition, Rect, UnitDefinition } from './types';
 
 export const UNIT_DEFINITIONS: UnitDefinition[] = [
   {
@@ -102,7 +102,7 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
     name: 'VIP',
     color: '#facc15',
     radius: 14,
-    maxHp: 1,
+    maxHp: 50,
     collideDamage: 0,
     knockback: 0,
     recoil: 0,
@@ -130,6 +130,127 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
 const UNIT_LOOKUP = new Map(UNIT_DEFINITIONS.map((def) => [def.id, def]));
 
 export const TEAM_LOADOUT: string[] = ['soldier', 'soldier', 'soldier', 'mage', 'archer', 'archer'];
+
+const SUMMONER_TILE_SIZE = 64;
+const SUMMONER_MAP_WIDTH = 2048;
+const SUMMONER_MAP_HEIGHT = 1152;
+const SUMMONER_COLUMNS = SUMMONER_MAP_WIDTH / SUMMONER_TILE_SIZE;
+const SUMMONER_ROWS = SUMMONER_MAP_HEIGHT / SUMMONER_TILE_SIZE;
+const SUMMONER_CENTER_COLUMN = SUMMONER_COLUMNS / 2;
+const SUMMONER_CENTER_ROW = SUMMONER_ROWS / 2;
+const SUMMONER_WALKWAY_THICKNESS = 0.9;
+const SUMMONER_WATER_RADIUS = 11.5;
+const SUMMONER_WALL_THICKNESS = 24;
+
+const SUMMONER_WATER_CELLS = new Set<string>();
+const SUMMONER_WALKWAY_CELLS = new Set<string>();
+
+const getSummonerCellKey = (col: number, row: number): string => `${col},${row}`;
+
+for (let row = 0; row < SUMMONER_ROWS; row++) {
+  for (let col = 0; col < SUMMONER_COLUMNS; col++) {
+    const x = col + 0.5 - SUMMONER_CENTER_COLUMN;
+    const y = row + 0.5 - SUMMONER_CENTER_ROW;
+    const diag1 = Math.abs(y - x);
+    const diag2 = Math.abs(y + x);
+    const onWalkway = diag1 <= SUMMONER_WALKWAY_THICKNESS || diag2 <= SUMMONER_WALKWAY_THICKNESS;
+    const diamond = Math.abs(x) + Math.abs(y) <= SUMMONER_WATER_RADIUS;
+    if (onWalkway) {
+      SUMMONER_WALKWAY_CELLS.add(getSummonerCellKey(col, row));
+    }
+    if (diamond && !onWalkway) {
+      SUMMONER_WATER_CELLS.add(getSummonerCellKey(col, row));
+    }
+  }
+}
+
+function createSummonerLakes(): Rect[] {
+  const rects: Rect[] = [];
+  for (let row = 0; row < SUMMONER_ROWS; row++) {
+    let start: number | null = null;
+    for (let col = 0; col <= SUMMONER_COLUMNS; col++) {
+      const isWater = SUMMONER_WATER_CELLS.has(getSummonerCellKey(col, row));
+      if (isWater && start === null) {
+        start = col;
+      } else if ((!isWater || col === SUMMONER_COLUMNS) && start !== null) {
+        rects.push({
+          x: start * SUMMONER_TILE_SIZE,
+          y: row * SUMMONER_TILE_SIZE,
+          width: (col - start) * SUMMONER_TILE_SIZE,
+          height: SUMMONER_TILE_SIZE,
+        });
+        start = null;
+      }
+    }
+  }
+  return rects;
+}
+
+function createSummonerWalls(): Rect[] {
+  const rects: Rect[] = [];
+  const added = new Set<string>();
+  const directions = [
+    {
+      dx: 1,
+      dy: 0,
+      width: SUMMONER_WALL_THICKNESS,
+      height: SUMMONER_TILE_SIZE,
+      xOffset: (col: number) => (col + 1) * SUMMONER_TILE_SIZE - SUMMONER_WALL_THICKNESS,
+      yOffset: (row: number) => row * SUMMONER_TILE_SIZE,
+    },
+    {
+      dx: -1,
+      dy: 0,
+      width: SUMMONER_WALL_THICKNESS,
+      height: SUMMONER_TILE_SIZE,
+      xOffset: (col: number) => col * SUMMONER_TILE_SIZE,
+      yOffset: (row: number) => row * SUMMONER_TILE_SIZE,
+    },
+    {
+      dx: 0,
+      dy: 1,
+      width: SUMMONER_TILE_SIZE,
+      height: SUMMONER_WALL_THICKNESS,
+      xOffset: (col: number) => col * SUMMONER_TILE_SIZE,
+      yOffset: (row: number) => (row + 1) * SUMMONER_TILE_SIZE - SUMMONER_WALL_THICKNESS,
+    },
+    {
+      dx: 0,
+      dy: -1,
+      width: SUMMONER_TILE_SIZE,
+      height: SUMMONER_WALL_THICKNESS,
+      xOffset: (col: number) => col * SUMMONER_TILE_SIZE,
+      yOffset: (row: number) => row * SUMMONER_TILE_SIZE,
+    },
+  ];
+
+  for (let row = 0; row < SUMMONER_ROWS; row++) {
+    for (let col = 0; col < SUMMONER_COLUMNS; col++) {
+      if (!SUMMONER_WALKWAY_CELLS.has(getSummonerCellKey(col, row))) {
+        continue;
+      }
+      for (const dir of directions) {
+        const neighborKey = getSummonerCellKey(col + dir.dx, row + dir.dy);
+        if (!SUMMONER_WATER_CELLS.has(neighborKey)) {
+          continue;
+        }
+        const x = dir.xOffset(col);
+        const y = dir.yOffset(row);
+        const key = `${x},${y},${dir.width},${dir.height}`;
+        if (added.has(key)) {
+          continue;
+        }
+        added.add(key);
+        rects.push({ x, y, width: dir.width, height: dir.height });
+      }
+    }
+  }
+
+  return rects;
+}
+
+const SUMMONER_RIFT_LAKES = createSummonerLakes();
+const SUMMONER_RIFT_WALLS = createSummonerWalls();
 
 export const MAPS: MapDefinition[] = [
   {
@@ -328,81 +449,35 @@ export const MAPS: MapDefinition[] = [
   {
     id: 'summoner-rift-lite',
     name: 'Summoner Rift (Lite)',
-    description: 'Diagonal lanes with stepped river wedges and fortified VIP nexuses at opposing corners.',
+    description: 'X-shaped river trenches split the arena while opposing VIP corners demand disciplined strikes.',
     width: 2048,
     height: 1152,
-    lakes: [
-      { x: 728, y: 232, width: 592, height: 96 },
-      { x: 804, y: 324, width: 440, height: 84 },
-      { x: 880, y: 416, width: 288, height: 72 },
-      { x: 956, y: 508, width: 136, height: 60 },
-      { x: 728, y: 824, width: 592, height: 96 },
-      { x: 804, y: 744, width: 440, height: 84 },
-      { x: 880, y: 664, width: 288, height: 72 },
-      { x: 956, y: 584, width: 136, height: 60 },
-      { x: 220, y: 300, width: 520, height: 220 },
-      { x: 312, y: 346, width: 459, height: 201 },
-      { x: 404, y: 392, width: 399, height: 182 },
-      { x: 496, y: 438, width: 338, height: 163 },
-      { x: 588, y: 484, width: 278, height: 145 },
-      { x: 680, y: 530, width: 217, height: 126 },
-      { x: 772, y: 576, width: 157, height: 107 },
-      { x: 864, y: 622, width: 96, height: 88 },
-      { x: 1308, y: 300, width: 520, height: 220 },
-      { x: 1277, y: 346, width: 459, height: 201 },
-      { x: 1245, y: 392, width: 399, height: 182 },
-      { x: 1214, y: 438, width: 338, height: 163 },
-      { x: 1182, y: 484, width: 278, height: 145 },
-      { x: 1151, y: 530, width: 217, height: 126 },
-      { x: 1119, y: 576, width: 157, height: 107 },
-      { x: 1088, y: 622, width: 96, height: 88 },
-    ],
-    walls: [
-      { x: 492, y: 180, width: 44, height: 188 },
-      { x: 588, y: 276, width: 44, height: 188 },
-      { x: 684, y: 372, width: 44, height: 188 },
-      { x: 780, y: 468, width: 44, height: 188 },
-      { x: 876, y: 564, width: 44, height: 188 },
-      { x: 972, y: 660, width: 44, height: 188 },
-      { x: 1512, y: 180, width: 44, height: 188 },
-      { x: 1416, y: 276, width: 44, height: 188 },
-      { x: 1320, y: 372, width: 44, height: 188 },
-      { x: 1224, y: 468, width: 44, height: 188 },
-      { x: 1128, y: 564, width: 44, height: 188 },
-      { x: 1032, y: 660, width: 44, height: 188 },
-      { x: 492, y: 784, width: 44, height: 188 },
-      { x: 588, y: 688, width: 44, height: 188 },
-      { x: 684, y: 592, width: 44, height: 188 },
-      { x: 780, y: 496, width: 44, height: 188 },
-      { x: 876, y: 400, width: 44, height: 188 },
-      { x: 972, y: 304, width: 44, height: 188 },
-      { x: 1512, y: 784, width: 44, height: 188 },
-      { x: 1416, y: 688, width: 44, height: 188 },
-      { x: 1320, y: 592, width: 44, height: 188 },
-      { x: 1224, y: 496, width: 44, height: 188 },
-      { x: 1128, y: 400, width: 44, height: 188 },
-      { x: 1032, y: 304, width: 44, height: 188 },
-    ],
+    lakes: SUMMONER_RIFT_LAKES,
+    walls: SUMMONER_RIFT_WALLS,
     playerSpawns: [
-      { x: 168, y: 1040 },
-      { x: 288, y: 952 },
-      { x: 348, y: 892 },
-      { x: 408, y: 832 },
-      { x: 468, y: 892 },
-      { x: 528, y: 952 },
+      { x: 480, y: 1120 },
+      { x: 544, y: 1056 },
+      { x: 672, y: 928 },
+      { x: 736, y: 864 },
+      { x: 800, y: 800 },
+      { x: 864, y: 736 },
     ],
     botSpawns: [
-      { x: 1872, y: 136 },
-      { x: 1596, y: 248 },
-      { x: 1656, y: 304 },
-      { x: 1716, y: 360 },
-      { x: 1776, y: 304 },
-      { x: 1836, y: 248 },
+      { x: 1568, y: 32 },
+      { x: 1504, y: 96 },
+      { x: 1376, y: 224 },
+      { x: 1312, y: 288 },
+      { x: 1248, y: 352 },
+      { x: 1184, y: 416 },
     ],
     teamLoadouts: {
-      0: ['vip-guardian', 'soldier', 'archer', 'mage', 'archer', 'soldier'],
-      1: ['vip-guardian', 'soldier', 'archer', 'mage', 'archer', 'soldier'],
+      0: ['soldier', 'soldier', 'archer', 'mage', 'archer', 'soldier'],
+      1: ['soldier', 'soldier', 'archer', 'mage', 'archer', 'soldier'],
     },
+    vipUnits: [
+      { team: 0, unitId: 'vip', position: { x: 608, y: 992 } },
+      { team: 1, unitId: 'vip', position: { x: 1440, y: 160 } },
+    ],
   },
   {
     id: 'vip-stronghold',
