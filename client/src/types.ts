@@ -141,6 +141,7 @@ export interface SimulationFrameProjectile {
   y: number;
   radius: number;
   color: string;
+  ownerTeam: TeamId;
 }
 
 export interface SimulationFrameZone {
@@ -150,6 +151,7 @@ export interface SimulationFrameZone {
   radius: number;
   strength: number;
   color: string;
+  ownerTeam: TeamId;
 }
 
 export interface SimulationFrame {

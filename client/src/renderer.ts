@@ -67,6 +67,28 @@ const VIP_CORE_COLOR = 'rgba(254,240,138,0.95)';
 const VIP_HIGHLIGHT_AURA = 'rgba(253,224,71,0.9)';
 const BASE_UNIT_ID = 'base';
 
+const FOG_MAP_ID = 'the-rift-fog';
+const FOG_MINION_REVEAL_RADIUS = 220;
+const FOG_BASE_REVEAL_RADIUS = 300;
+const FOG_PROJECTILE_REVEAL_RADIUS = 90;
+const FOG_IGNITE_REVEAL_RADIUS = 140;
+const FOG_OVERLAY_ALPHA = 0.82;
+const FOG_REVEAL_INNER_RATIO = 0.35;
+const FOG_REVEAL_MID_RATIO = 0.7;
+const FOG_ENEMY_BASE_ALPHA = 0.45;
+const FOG_FRIENDLY_GRAVE_ALPHA = 0.55;
+
+interface FogReveal {
+  x: number;
+  y: number;
+  radius: number;
+}
+
+interface FogState {
+  friendlyTeam: TeamId;
+  reveals: FogReveal[];
+}
+
 interface RenderOptions {
   dragOrigin?: Vector | null;
   dragCurrent?: Vector | null;
@@ -88,6 +110,8 @@ export class Renderer {
   private lastOptions: RenderOptions | null = null;
   private isRendering = false;
   private needsRerender = false;
+  private perspectiveTeam: TeamId = 0;
+  private fogState: FogState | null = null;
 
   constructor(canvas: HTMLCanvasElement, map: MapDefinition) {
     const ctx = canvas.getContext('2d');
@@ -108,6 +132,16 @@ export class Renderer {
     this.resetCamera();
     this.updateCanvasSize();
     this.observeParent();
+  }
+
+  setPerspectiveTeam(team: TeamId): void {
+    if (this.perspectiveTeam === team) {
+      return;
+    }
+    this.perspectiveTeam = team;
+    if (this.lastState) {
+      this.rerender();
+    }
   }
 
   private handleResize(): void {
@@ -244,14 +278,18 @@ export class Renderer {
     this.isRendering = true;
     this.needsRerender = false;
     try {
+      this.fogState = this.shouldUseFog(state) ? this.buildFogState(state) : null;
       this.prepareFrame();
       this.drawArena();
       this.drawLakes();
       this.drawWalls();
-      this.drawZones(state.activeZones);
+      this.drawZones(state);
       this.drawGraves(state.graves);
       this.drawUnits(state);
       this.drawProjectiles(state.activeProjectiles);
+      if (this.fogState) {
+        this.drawFogMask(this.fogState);
+      }
       this.drawDragIndicator(state, options);
       this.drawStatus(state);
     } finally {
@@ -321,9 +359,101 @@ export class Renderer {
     }
   }
 
-  private drawZones(zones: SimulationFrameZone[]): void {
+  private shouldUseFog(state: GameState): boolean {
+    return state.mapId === FOG_MAP_ID;
+  }
+
+  private buildFogState(state: GameState): FogState {
+    const friendlyTeam = this.perspectiveTeam;
+    const reveals: FogReveal[] = [];
+    const unitLookup = new Map(state.units.map((unit) => [unit.id, unit] as const));
+
+    for (const unit of state.units) {
+      if (!unit.alive || unit.team !== friendlyTeam) {
+        continue;
+      }
+      const radius = unit.def.id === BASE_UNIT_ID ? FOG_BASE_REVEAL_RADIUS : FOG_MINION_REVEAL_RADIUS;
+      reveals.push({ x: unit.position.x, y: unit.position.y, radius });
+    }
+
+    for (const projectile of state.activeProjectiles) {
+      if (projectile.ownerTeam === friendlyTeam) {
+        reveals.push({ x: projectile.x, y: projectile.y, radius: FOG_PROJECTILE_REVEAL_RADIUS });
+      }
+    }
+
+    for (const zone of state.activeZones) {
+      if (zone.ownerTeam === friendlyTeam) {
+        reveals.push({ x: zone.x, y: zone.y, radius: zone.radius });
+      }
+    }
+
+    for (const status of state.statuses) {
+      const unit = unitLookup.get(status.unitId);
+      if (!unit || !unit.alive) {
+        continue;
+      }
+      reveals.push({ x: unit.position.x, y: unit.position.y, radius: FOG_IGNITE_REVEAL_RADIUS });
+    }
+
+    return { friendlyTeam, reveals };
+  }
+
+  private drawFogMask(fog: FogState): void {
     const { ctx } = this;
+    ctx.save();
+    ctx.fillStyle = `rgba(6, 10, 18, ${FOG_OVERLAY_ALPHA})`;
+    ctx.fillRect(0, 0, this.map.width, this.map.height);
+    ctx.globalCompositeOperation = 'destination-out';
+    for (const reveal of fog.reveals) {
+      this.carveFogReveal(reveal);
+    }
+    ctx.restore();
+  }
+
+  private carveFogReveal(reveal: FogReveal): void {
+    const { ctx } = this;
+    if (reveal.radius <= 0) {
+      return;
+    }
+    const innerRadius = Math.max(1, reveal.radius * FOG_REVEAL_INNER_RATIO);
+    const midRadius = Math.max(innerRadius, reveal.radius * FOG_REVEAL_MID_RATIO);
+    const gradient = ctx.createRadialGradient(reveal.x, reveal.y, innerRadius, reveal.x, reveal.y, reveal.radius);
+    const midStop = Math.min(1, midRadius / Math.max(reveal.radius, 1));
+    gradient.addColorStop(0, 'rgba(0,0,0,1)');
+    gradient.addColorStop(midStop, 'rgba(0,0,0,0.7)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(reveal.x, reveal.y, reveal.radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  private isCircleVisible(center: Vector, radius: number): boolean {
+    if (!this.fogState) {
+      return true;
+    }
+    for (const reveal of this.fogState.reveals) {
+      const dx = center.x - reveal.x;
+      const dy = center.y - reveal.y;
+      const limit = radius + reveal.radius;
+      if (dx * dx + dy * dy <= limit * limit) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private drawZones(state: GameState): void {
+    const { ctx } = this;
+    const zones = state.activeZones;
     for (const zone of zones) {
+      if (this.fogState) {
+        const isFriendlyZone = zone.ownerTeam === this.fogState.friendlyTeam;
+        if (!isFriendlyZone && !this.isCircleVisible({ x: zone.x, y: zone.y }, zone.radius * 0.6)) {
+          continue;
+        }
+      }
       ctx.save();
       ctx.globalAlpha = Math.min(1, Math.max(0.2, zone.strength));
       const gradient = ctx.createRadialGradient(zone.x, zone.y, zone.radius * 0.15, zone.x, zone.y, zone.radius);
@@ -339,6 +469,7 @@ export class Renderer {
   }
 
   private drawUnits(state: GameState): void {
+    const { ctx } = this;
     const highlightId = state.phase !== 'ended' ? this.getUpcomingUnitId(state, state.activeTeam) : null;
     const teamStroke: Record<TeamId, string> = {
       0: '#0ea5e9',
@@ -357,11 +488,22 @@ export class Renderer {
       1: 'rgba(253,186,116,0.9)',
     };
     const burningUnits = new Set(state.statuses.map((status) => status.unitId));
+    const fog = this.fogState;
+    const friendlyTeam = fog?.friendlyTeam ?? this.perspectiveTeam;
 
     for (const unit of state.units) {
       if (!unit.alive) {
         continue;
       }
+
+      const isFriendly = unit.team === friendlyTeam;
+      const isBaseUnit = unit.def.id === BASE_UNIT_ID;
+      const unitVisible = this.isCircleVisible(unit.position, unit.def.radius * 0.85);
+      if (fog && !isFriendly && !unitVisible && !isBaseUnit) {
+        continue;
+      }
+
+      const dimAlpha = fog && !isFriendly && !unitVisible && isBaseUnit ? FOG_ENEMY_BASE_ALPHA : 1;
 
       const isHighlight = Boolean(
         highlightId &&
@@ -371,7 +513,6 @@ export class Renderer {
       );
 
       const isVipUnit = VIP_UNIT_IDS.has(unit.def.id);
-      const isBaseUnit = unit.def.id === BASE_UNIT_ID;
       const isVipLike = isVipUnit || isBaseUnit;
       const baseColor = this.getUnitBaseColor(unit);
       let fillColor = this.lightenColor(baseColor, unit.team === 0 ? 0.1 : -0.05);
@@ -389,6 +530,10 @@ export class Renderer {
       }
       const lineWidth = isHighlight ? 4 : isBaseUnit ? 4 : 3;
 
+      ctx.save();
+      if (dimAlpha < 1) {
+        ctx.globalAlpha *= dimAlpha;
+      }
       this.drawUnitShape(unit, fillColor, strokeColor, centerColor, lineWidth, isHighlight);
       if (isHighlight) {
         const auraColor = isVipLike ? VIP_HIGHLIGHT_AURA : highlightAura[unit.team] ?? strokeColor;
@@ -398,12 +543,21 @@ export class Renderer {
       if (burningUnits.has(unit.id)) {
         this.drawBurnIcon(unit);
       }
+      ctx.restore();
     }
   }
 
   private drawProjectiles(projectiles: SimulationFrameProjectile[]): void {
     const { ctx } = this;
+    const fog = this.fogState;
+    const friendlyTeam = fog?.friendlyTeam ?? this.perspectiveTeam;
     for (const projectile of projectiles) {
+      if (fog && projectile.ownerTeam !== friendlyTeam) {
+        const visible = this.isCircleVisible({ x: projectile.x, y: projectile.y }, projectile.radius * 1.5);
+        if (!visible) {
+          continue;
+        }
+      }
       ctx.save();
       ctx.fillStyle = projectile.color;
       ctx.beginPath();
@@ -463,8 +617,18 @@ export class Renderer {
 
   private drawGraves(graves: GraveMarker[]): void {
     const { ctx } = this;
+    const fog = this.fogState;
+    const friendlyTeam = fog?.friendlyTeam ?? this.perspectiveTeam;
     for (const grave of graves) {
+      const isFriendlyGrave = fog ? grave.team === friendlyTeam : false;
+      const graveVisible = this.isCircleVisible(grave.position, 14);
+      if (fog && !isFriendlyGrave && !graveVisible) {
+        continue;
+      }
       ctx.save();
+      if (fog && isFriendlyGrave && !graveVisible) {
+        ctx.globalAlpha *= FOG_FRIENDLY_GRAVE_ALPHA;
+      }
       const markerColor = grave.team === 0 ? 'rgba(148,163,184,0.85)' : 'rgba(250,204,21,0.85)';
       ctx.fillStyle = markerColor;
       ctx.translate(grave.position.x, grave.position.y);

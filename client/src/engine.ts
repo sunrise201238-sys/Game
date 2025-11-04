@@ -735,6 +735,7 @@ export class GameEngine {
       y: projectile.position.y,
       radius: projectile.radius,
       color: projectile.color,
+      ownerTeam: projectile.ownerTeam,
     }));
     const zoneFrames: SimulationFrameZone[] = zones.map((zone) => this.zoneToFrame(zone));
     return { units, projectiles: projectileFrames, zones: zoneFrames };
@@ -754,6 +755,7 @@ export class GameEngine {
       radius: zone.radius,
       strength,
       color: zone.color,
+      ownerTeam: zone.ownerTeam,
     };
   }
 
