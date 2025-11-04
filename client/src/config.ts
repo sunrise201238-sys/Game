@@ -129,7 +129,7 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
 
 const UNIT_LOOKUP = new Map(UNIT_DEFINITIONS.map((def) => [def.id, def]));
 
-export const TEAM_LOADOUT: string[] = ['archer', 'soldier', 'mage', 'soldier', 'archer', 'soldier'];
+export const TEAM_LOADOUT: string[] = ['soldier', 'soldier', 'soldier', 'mage', 'archer', 'archer'];
 
 // --- The Rift ---------------------------------------------------------------
 // Rectangles are top-left anchored. Units spawn centered at their points.
