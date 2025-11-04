@@ -68,7 +68,7 @@ const VIP_HIGHLIGHT_AURA = 'rgba(253,224,71,0.9)';
 const BASE_UNIT_ID = 'base';
 
 const FOG_MAP_ID = 'the-rift-fog';
-const FOG_MINION_REVEAL_RADIUS = 220;
+const FOG_MINION_REVEAL_RADIUS = 110;
 const FOG_BASE_REVEAL_RADIUS = 300;
 const FOG_PROJECTILE_REVEAL_RADIUS = 90;
 const FOG_IGNITE_REVEAL_RADIUS = 140;
@@ -112,6 +112,8 @@ export class Renderer {
   private needsRerender = false;
   private perspectiveTeam: TeamId = 0;
   private fogState: FogState | null = null;
+  private fogCanvas: HTMLCanvasElement | null = null;
+  private fogCtx: CanvasRenderingContext2D | null = null;
 
   constructor(canvas: HTMLCanvasElement, map: MapDefinition) {
     const ctx = canvas.getContext('2d');
@@ -132,6 +134,7 @@ export class Renderer {
     this.resetCamera();
     this.updateCanvasSize();
     this.observeParent();
+    this.resetFogCanvas();
   }
 
   setPerspectiveTeam(team: TeamId): void {
@@ -363,6 +366,34 @@ export class Renderer {
     return state.mapId === FOG_MAP_ID;
   }
 
+  private resetFogCanvas(): void {
+    this.fogCanvas = null;
+    this.fogCtx = null;
+  }
+
+  private ensureFogContext(): CanvasRenderingContext2D {
+    const width = Math.ceil(this.map.width);
+    const height = Math.ceil(this.map.height);
+    if (!this.fogCanvas) {
+      this.fogCanvas = document.createElement('canvas');
+      this.fogCanvas.width = width;
+      this.fogCanvas.height = height;
+    } else if (this.fogCanvas.width !== width || this.fogCanvas.height !== height) {
+      this.fogCanvas.width = width;
+      this.fogCanvas.height = height;
+    }
+
+    if (!this.fogCtx) {
+      const ctx = this.fogCanvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('Fog canvas context not available');
+      }
+      this.fogCtx = ctx;
+    }
+
+    return this.fogCtx;
+  }
+
   private buildFogState(state: GameState): FogState {
     const friendlyTeam = this.perspectiveTeam;
     const reveals: FogReveal[] = [];
@@ -400,19 +431,22 @@ export class Renderer {
   }
 
   private drawFogMask(fog: FogState): void {
-    const { ctx } = this;
-    ctx.save();
-    ctx.fillStyle = `rgba(6, 10, 18, ${FOG_OVERLAY_ALPHA})`;
-    ctx.fillRect(0, 0, this.map.width, this.map.height);
-    ctx.globalCompositeOperation = 'destination-out';
+    const fogCtx = this.ensureFogContext();
+    const fogCanvas = this.fogCanvas!;
+    fogCtx.save();
+    fogCtx.setTransform(1, 0, 0, 1, 0, 0);
+    fogCtx.clearRect(0, 0, fogCanvas.width, fogCanvas.height);
+    fogCtx.fillStyle = `rgba(6, 10, 18, ${FOG_OVERLAY_ALPHA})`;
+    fogCtx.fillRect(0, 0, this.map.width, this.map.height);
+    fogCtx.globalCompositeOperation = 'destination-out';
     for (const reveal of fog.reveals) {
-      this.carveFogReveal(reveal);
+      this.carveFogReveal(fogCtx, reveal);
     }
-    ctx.restore();
+    fogCtx.restore();
+    this.ctx.drawImage(fogCanvas, 0, 0);
   }
 
-  private carveFogReveal(reveal: FogReveal): void {
-    const { ctx } = this;
+  private carveFogReveal(ctx: CanvasRenderingContext2D, reveal: FogReveal): void {
     if (reveal.radius <= 0) {
       return;
     }
