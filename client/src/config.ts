@@ -306,10 +306,10 @@ const RIFT_BASE_TR: XY = { x: RIFT_WIDTH - 112, y: 96 };
 
 // Defender cluster offset from the base, inspired by the reference layout (bottom-left version)
 const RIFT_DEFENDER_OFFSETS: XY[] = [
-  { x: 100, y: -110 },
-  { x: 150, y: -60 },
-  { x: 200, y:  -46 },
-  { x: 250, y:  -14 },
+  { x: 0, y: -110 },
+  { x: 50, y: -85 },
+  { x: 175, y:  -46 },
+  { x: 225, y:  -14 },
   { x: 300, y:  34 },
   { x: 350, y:   66 },
 ];
