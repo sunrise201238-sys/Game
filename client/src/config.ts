@@ -306,12 +306,12 @@ const RIFT_BASE_TR: XY = { x: RIFT_WIDTH - 112, y: 96 };
 
 // Defender cluster offset from the base, inspired by the reference layout (bottom-left version)
 const RIFT_DEFENDER_OFFSETS: XY[] = [
-  { x: 144, y: -256 },
-  { x: 193, y: -256 },
-  { x: 242, y: -205 },
-  { x: 291, y: -174 },
-  { x: 341, y: -120 },
-  { x: 390, y: -88 },
+  { x: 150, y: -160 },
+  { x: 200, y: -160 },
+  { x: 250, y:  -96 },
+  { x: 300, y:  -64 },
+  { x: 350, y:  -16 },
+  { x: 400, y:   16 },
 ];
 
 const riftPlayerSpawns = RIFT_DEFENDER_OFFSETS.map((offset) => ({
