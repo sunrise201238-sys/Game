@@ -136,12 +136,12 @@ export const TEAM_LOADOUT: string[] = ['soldier', 'soldier', 'soldier', 'mage', 
 
 type XY = Vector;
 
-const RIFT_WIDTH = 2048;
+const RIFT_WIDTH = 1152;
 const RIFT_HEIGHT = 1152;
 
 // Inner lake “box” (blue area before carving the X corridors)
-const RIFT_X_LEFT = 256; // left margin
-const RIFT_X_RIGHT = RIFT_WIDTH - 256; // right margin
+const RIFT_X_LEFT = 128; // left margin
+const RIFT_X_RIGHT = RIFT_WIDTH - 128; // right margin
 const RIFT_Y_TOP = 128; // top margin
 const RIFT_Y_BOTTOM = RIFT_HEIGHT - 128; // bottom margin
 
