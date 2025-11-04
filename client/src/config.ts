@@ -311,7 +311,7 @@ const RIFT_DEFENDER_OFFSETS: XY[] = [
   { x: 165, y:  -61 },
   { x: 215, y:  -61 },
   { x: 325, y:  34 },
-  { x: -25, y:  -225},
+  { x: -25, y:  -225 },
 ];
 
 const riftPlayerSpawns = RIFT_DEFENDER_OFFSETS.map((offset) => ({
