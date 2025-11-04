@@ -137,13 +137,13 @@ export const TEAM_LOADOUT: string[] = ['soldier', 'soldier', 'soldier', 'mage', 
 type XY = Vector;
 
 const RIFT_WIDTH = 2048;
-const RIFT_HEIGHT = 1152;
+const RIFT_HEIGHT = RIFT_WIDTH; // square map layout
 
 // Inner lake “box” (blue area before carving the X corridors)
 const RIFT_X_LEFT = 256; // left margin
 const RIFT_X_RIGHT = RIFT_WIDTH - 256; // right margin
-const RIFT_Y_TOP = 128; // top margin
-const RIFT_Y_BOTTOM = RIFT_HEIGHT - 128; // bottom margin
+const RIFT_Y_TOP = 256; // top margin
+const RIFT_Y_BOTTOM = RIFT_HEIGHT - 256; // bottom margin
 
 // X corridor geometry (two bands connecting opposite corners)
 const RIFT_CORRIDOR_WIDTH = 180; // visual width of each diagonal ground lane
