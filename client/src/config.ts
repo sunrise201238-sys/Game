@@ -1,4 +1,4 @@
-import type { MapDefinition, UnitDefinition } from './types';
+import type { MapDefinition, Rect, UnitDefinition, Vector } from './types';
 
 export const UNIT_DEFINITIONS: UnitDefinition[] = [
   {
@@ -130,6 +130,201 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
 const UNIT_LOOKUP = new Map(UNIT_DEFINITIONS.map((def) => [def.id, def]));
 
 export const TEAM_LOADOUT: string[] = ['soldier', 'soldier', 'soldier', 'mage', 'archer', 'archer'];
+
+// --- The Rift ---------------------------------------------------------------
+// Rectangles are top-left anchored. Units spawn centered at their points.
+
+type XY = Vector;
+
+const RIFT_WIDTH = 2048;
+const RIFT_HEIGHT = 1152;
+
+// Inner lake “box” (blue area before carving the X corridors)
+const RIFT_X_LEFT = 256; // left margin
+const RIFT_X_RIGHT = RIFT_WIDTH - 256; // right margin
+const RIFT_Y_TOP = 128; // top margin
+const RIFT_Y_BOTTOM = RIFT_HEIGHT - 128; // bottom margin
+
+// X corridor geometry (two bands connecting opposite corners)
+const RIFT_CORRIDOR_WIDTH = 180; // visual width of each diagonal ground lane
+
+// Utility: scanline carve (returns rectangles for “lakes” after removing the two corridors)
+function buildRiftLakes(step = 16): Rect[] {
+  const lakes: Rect[] = [];
+
+  // TL->BR line: a1 x + b1 y + c1 = 0
+  const dx = RIFT_X_RIGHT - RIFT_X_LEFT;
+  const dy = RIFT_Y_BOTTOM - RIFT_Y_TOP;
+  const a1 = dy;
+  const b1 = -dx;
+  const c1 = -(a1 * RIFT_X_LEFT + b1 * RIFT_Y_TOP);
+
+  // TR->BL line: a2 x + b2 y + c2 = 0
+  const a2 = dy;
+  const b2 = +dx;
+  const c2 = -(a2 * RIFT_X_RIGHT + b2 * RIFT_Y_TOP);
+
+  const denom = Math.hypot(a1, b1);
+  const D = (RIFT_CORRIDOR_WIDTH / 2) * denom;
+
+  for (let y = RIFT_Y_TOP; y < RIFT_Y_BOTTOM; y += step) {
+    // Corridor interval on this y for each band
+    const k1 = b1 * y + c1;
+    const k2 = b2 * y + c2;
+    let L1a = (-D - k1) / a1;
+    let L1b = (D - k1) / a1;
+    if (L1a > L1b) [L1a, L1b] = [L1b, L1a];
+    let L2a = (-D - k2) / a2;
+    let L2b = (D - k2) / a2;
+    if (L2a > L2b) [L2a, L2b] = [L2b, L2a];
+
+    // Clip to inner box
+    L1a = Math.max(L1a, RIFT_X_LEFT);
+    L1b = Math.min(L1b, RIFT_X_RIGHT);
+    L2a = Math.max(L2a, RIFT_X_LEFT);
+    L2b = Math.min(L2b, RIFT_X_RIGHT);
+
+    // Sort + union the two corridor intervals
+    const segs = [
+      [L1a, L1b],
+      [L2a, L2b],
+    ]
+      .filter(([a, b]) => a < b)
+      .sort((A, B) => A[0] - B[0]);
+    const union: Array<[number, number]> = [];
+    for (const s of segs) {
+      if (!union.length || s[0] > union[union.length - 1][1]) {
+        union.push([s[0], s[1]]);
+      } else {
+        union[union.length - 1][1] = Math.max(union[union.length - 1][1], s[1]);
+      }
+    }
+
+    // Complement inside [xL, xR] are the lake spans on this scanline
+    let start = RIFT_X_LEFT;
+    for (const [u0, u1] of union) {
+      if (start < u0) {
+        lakes.push({ x: Math.round(start), y, width: Math.round(u0 - start), height: step });
+      }
+      start = Math.max(start, u1);
+    }
+    if (start < RIFT_X_RIGHT) {
+      lakes.push({ x: Math.round(start), y, width: Math.round(RIFT_X_RIGHT - start), height: step });
+    }
+  }
+
+  return lakes;
+}
+
+// --- Walls: partial coverage strips on triangle edges (tips left open) -----
+
+// helper: line offset band (returns small stepped squares so walls follow diagonals)
+function diagonalWallStrip(
+  p1: XY,
+  p2: XY,
+  side: 1 | -1,
+  t0: number,
+  t1: number,
+  offsetFromCenter: number,
+  tile = 32,
+  thick = 32,
+): Rect[] {
+  const out: Rect[] = [];
+  const vx = p2.x - p1.x;
+  const vy = p2.y - p1.y;
+  const L = Math.hypot(vx, vy);
+  const ux = vx / L;
+  const uy = vy / L;
+  const nx = -uy * side;
+  const ny = ux * side; // normal (choose side toward the lake)
+
+  const start = t0 * L;
+  const end = t1 * L;
+  const steps = Math.max(1, Math.ceil((end - start) / tile));
+  for (let i = 0; i <= steps; i++) {
+    const d = start + (i * (end - start)) / steps;
+    const cx = p1.x + ux * d + nx * offsetFromCenter;
+    const cy = p1.y + uy * d + ny * offsetFromCenter;
+    out.push({ x: Math.round(cx - thick / 2), y: Math.round(cy - thick / 2), width: thick, height: thick });
+  }
+  return out;
+}
+
+// convenience for horizontal/vertical short edge walls
+function horizWall(x: number, y: number, width: number, height: number): Rect {
+  return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) };
+}
+function vertWall(x: number, y: number, width: number, height: number): Rect {
+  return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) };
+}
+
+// Corner points of the inner box for corridor centerlines
+const RIFT_TL: XY = { x: RIFT_X_LEFT, y: RIFT_Y_TOP };
+const RIFT_TR: XY = { x: RIFT_X_RIGHT, y: RIFT_Y_TOP };
+const RIFT_BL: XY = { x: RIFT_X_LEFT, y: RIFT_Y_BOTTOM };
+const RIFT_BR: XY = { x: RIFT_X_RIGHT, y: RIFT_Y_BOTTOM };
+
+// Where we place wall strips along each corridor edge
+const RIFT_WALL_TILE = 32;
+const RIFT_WALL_THICK = 34;
+const RIFT_EDGE_OFFSET = RIFT_CORRIDOR_WIDTH / 2 + RIFT_WALL_THICK * 0.4; // sit just inside the blue
+// Two short strips on each side of each diagonal (8 diagonal wall clusters total)
+const RIFT_WALL_RANGES: Array<[number, number]> = [
+  [0.18, 0.36],
+  [0.6, 0.78],
+];
+
+const riftDiagonalWalls: Rect[] = [
+  // TL -> BR, both sides
+  ...diagonalWallStrip(RIFT_TL, RIFT_BR, +1, RIFT_WALL_RANGES[0][0], RIFT_WALL_RANGES[0][1], RIFT_EDGE_OFFSET, RIFT_WALL_TILE, RIFT_WALL_THICK),
+  ...diagonalWallStrip(RIFT_TL, RIFT_BR, -1, RIFT_WALL_RANGES[0][0], RIFT_WALL_RANGES[0][1], RIFT_EDGE_OFFSET, RIFT_WALL_TILE, RIFT_WALL_THICK),
+  ...diagonalWallStrip(RIFT_TL, RIFT_BR, +1, RIFT_WALL_RANGES[1][0], RIFT_WALL_RANGES[1][1], RIFT_EDGE_OFFSET, RIFT_WALL_TILE, RIFT_WALL_THICK),
+  ...diagonalWallStrip(RIFT_TL, RIFT_BR, -1, RIFT_WALL_RANGES[1][0], RIFT_WALL_RANGES[1][1], RIFT_EDGE_OFFSET, RIFT_WALL_TILE, RIFT_WALL_THICK),
+
+  // TR -> BL, both sides
+  ...diagonalWallStrip(RIFT_TR, RIFT_BL, +1, RIFT_WALL_RANGES[0][0], RIFT_WALL_RANGES[0][1], RIFT_EDGE_OFFSET, RIFT_WALL_TILE, RIFT_WALL_THICK),
+  ...diagonalWallStrip(RIFT_TR, RIFT_BL, -1, RIFT_WALL_RANGES[0][0], RIFT_WALL_RANGES[0][1], RIFT_EDGE_OFFSET, RIFT_WALL_TILE, RIFT_WALL_THICK),
+  ...diagonalWallStrip(RIFT_TR, RIFT_BL, +1, RIFT_WALL_RANGES[1][0], RIFT_WALL_RANGES[1][1], RIFT_EDGE_OFFSET, RIFT_WALL_TILE, RIFT_WALL_THICK),
+  ...diagonalWallStrip(RIFT_TR, RIFT_BL, -1, RIFT_WALL_RANGES[1][0], RIFT_WALL_RANGES[1][1], RIFT_EDGE_OFFSET, RIFT_WALL_TILE, RIFT_WALL_THICK),
+];
+
+// Short top/bottom and left/right edge walls (not a full border)
+const riftEdgeWalls: Rect[] = [
+  // top
+  horizWall(RIFT_X_LEFT + 140, RIFT_Y_TOP - 18, RIFT_X_RIGHT - RIFT_X_LEFT - 280, 36),
+  // bottom
+  horizWall(RIFT_X_LEFT + 220, RIFT_Y_BOTTOM - 18, RIFT_X_RIGHT - RIFT_X_LEFT - 440, 36),
+  // left
+  vertWall(RIFT_X_LEFT - 18, RIFT_Y_TOP + 160, 36, RIFT_Y_BOTTOM - RIFT_Y_TOP - 320),
+  // right
+  vertWall(RIFT_X_RIGHT - 18, RIFT_Y_TOP + 160, 36, RIFT_Y_BOTTOM - RIFT_Y_TOP - 320),
+];
+
+// --- VIPs and minions (5 per team), mirrored & tucked in corners -----------
+const RIFT_VIP_BL: XY = { x: 128, y: RIFT_HEIGHT - 128 };
+const RIFT_VIP_TR: XY = { x: RIFT_WIDTH - 128, y: 128 };
+
+// Guard cluster near a corner, arcing along the corner (bottom-left version)
+function guardClusterBL(
+  n = 5,
+  angStartDeg = -105,
+  angEndDeg = -15,
+  rStart = 92,
+  rStep = 22,
+): XY[] {
+  const pts: XY[] = [];
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? 0.5 : i / (n - 1);
+    const ang = ((angStartDeg + t * (angEndDeg - angStartDeg)) * Math.PI) / 180;
+    const r = rStart + i * rStep;
+    pts.push({ x: RIFT_VIP_BL.x + r * Math.cos(ang), y: RIFT_VIP_BL.y + r * Math.sin(ang) });
+  }
+  return pts;
+}
+
+const riftPlayerSpawns = guardClusterBL(5);
+const riftBotSpawns = riftPlayerSpawns.map((p) => ({ x: RIFT_WIDTH - p.x, y: RIFT_HEIGHT - p.y })); // perfect rotational symmetry
+
 
 export const MAPS: MapDefinition[] = [
   {
@@ -323,6 +518,26 @@ export const MAPS: MapDefinition[] = [
       { x: 928, y: 240 },
       { x: 928, y: 288 },
       { x: 928, y: 336 },
+    ],
+  },
+  {
+    id: 'the-rift',
+    name: 'The Rift',
+    description:
+      'Four basins split by an X-shaped pass. Partial cover lines the banks; VIPs sit in opposite corners guarded by five minions.',
+    width: RIFT_WIDTH,
+    height: RIFT_HEIGHT,
+    // Lakes = inner rectangle minus the two diagonal corridors (built via scanlines)
+    lakes: buildRiftLakes(),
+    // Walls = short edge strips + diagonal partial strips; triangle tips remain uncovered
+    walls: [...riftEdgeWalls, ...riftDiagonalWalls],
+    // Five minions per team, mirrored (clustered to protect the VIPs)
+    playerSpawns: riftPlayerSpawns,
+    botSpawns: riftBotSpawns,
+    // VIPs pinned to corners
+    vipUnits: [
+      { team: 0, position: RIFT_VIP_BL },
+      { team: 1, position: RIFT_VIP_TR },
     ],
   },
   {
