@@ -291,7 +291,7 @@ const riftDiagonalWalls: Rect[] = [
 // Short top/bottom and left/right edge walls (not a full border)
 const riftEdgeWalls: Rect[] = [
   // top
-  horizWall(RIFT_X_LEFT + 140, RIFT_Y_TOP - 18, RIFT_X_RIGHT - RIFT_X_LEFT - 280, 36),
+  horizWall(RIFT_X_LEFT + 140, RIFT_Y_TOP - 18, (RIFT_X_RIGHT - RIFT_X_LEFT - 280) - 108, 36),
   // bottom
   horizWall(RIFT_X_LEFT + 220, RIFT_Y_BOTTOM - 18, RIFT_X_RIGHT - RIFT_X_LEFT - 440, 36),
   // left
