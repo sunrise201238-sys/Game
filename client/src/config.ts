@@ -129,7 +129,7 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
 
 const UNIT_LOOKUP = new Map(UNIT_DEFINITIONS.map((def) => [def.id, def]));
 
-export const TEAM_LOADOUT: string[] = ['soldier', 'soldier', 'soldier', 'mage', 'archer', 'archer'];
+export const TEAM_LOADOUT: string[] = ['archer', 'soldier', 'mage', 'soldier', 'archer', 'soldier'];
 
 // --- The Rift ---------------------------------------------------------------
 // Rectangles are top-left anchored. Units spawn centered at their points.
@@ -300,17 +300,18 @@ const riftEdgeWalls: Rect[] = [
   vertWall(RIFT_X_RIGHT - 18, RIFT_Y_TOP + 160, 36, RIFT_Y_BOTTOM - RIFT_Y_TOP - 320),
 ];
 
-// --- Bases and defenders (5 per team), mirrored & tucked in corners --------
+// --- Bases and defenders (6 per team), mirrored & tucked in corners --------
 const RIFT_BASE_BL: XY = { x: 112, y: RIFT_HEIGHT - 96 };
 const RIFT_BASE_TR: XY = { x: RIFT_WIDTH - 112, y: 96 };
 
 // Defender cluster offset from the base, inspired by the reference layout (bottom-left version)
 const RIFT_DEFENDER_OFFSETS: XY[] = [
-  { x: 40, y: -72 },
-  { x: 84, y: -108 },
-  { x: 136, y: -92 },
-  { x: 112, y: -48 },
-  { x: 60, y: -32 },
+  { x: 144, y: -32 },
+  { x: 193, y: -61 },
+  { x: 242, y: -89 },
+  { x: 291, y: -118 },
+  { x: 341, y: -147 },
+  { x: 390, y: -175 },
 ];
 
 const riftPlayerSpawns = RIFT_DEFENDER_OFFSETS.map((offset) => ({
@@ -518,14 +519,14 @@ export const MAPS: MapDefinition[] = [
     id: 'the-rift',
     name: 'The Rift',
     description:
-      'Four basins split by an X-shaped pass. Partial cover lines the banks; fortified bases sit in opposite corners guarded by five defenders.',
+      'Four basins split by an X-shaped pass. Partial cover lines the banks; fortified bases sit in opposite corners guarded by six defenders.',
     width: RIFT_WIDTH,
     height: RIFT_HEIGHT,
     // Lakes = inner rectangle minus the two diagonal corridors (built via scanlines)
     lakes: buildRiftLakes(),
     // Walls = short edge strips + diagonal partial strips; triangle tips remain uncovered
     walls: [...riftEdgeWalls, ...riftDiagonalWalls],
-    // Five minions per team, mirrored (clustered to protect the bases)
+    // Six minions per team, mirrored (clustered to protect the bases)
     playerSpawns: riftPlayerSpawns,
     botSpawns: riftBotSpawns,
     // Bases pinned to corners
