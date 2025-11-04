@@ -300,9 +300,9 @@ const riftEdgeWalls: Rect[] = [
   vertWall(RIFT_X_RIGHT - 18, RIFT_Y_TOP + 160, 36, RIFT_Y_BOTTOM - RIFT_Y_TOP - 320),
 ];
 
-// --- VIPs and minions (5 per team), mirrored & tucked in corners -----------
-const RIFT_VIP_BL: XY = { x: 128, y: RIFT_HEIGHT - 128 };
-const RIFT_VIP_TR: XY = { x: RIFT_WIDTH - 128, y: 128 };
+// --- Bases and defenders (5 per team), mirrored & tucked in corners --------
+const RIFT_BASE_BL: XY = { x: 128, y: RIFT_HEIGHT - 128 };
+const RIFT_BASE_TR: XY = { x: RIFT_WIDTH - 128, y: 128 };
 
 // Guard cluster near a corner, arcing along the corner (bottom-left version)
 function guardClusterBL(
@@ -317,7 +317,7 @@ function guardClusterBL(
     const t = n === 1 ? 0.5 : i / (n - 1);
     const ang = ((angStartDeg + t * (angEndDeg - angStartDeg)) * Math.PI) / 180;
     const r = rStart + i * rStep;
-    pts.push({ x: RIFT_VIP_BL.x + r * Math.cos(ang), y: RIFT_VIP_BL.y + r * Math.sin(ang) });
+    pts.push({ x: RIFT_BASE_BL.x + r * Math.cos(ang), y: RIFT_BASE_BL.y + r * Math.sin(ang) });
   }
   return pts;
 }
@@ -524,20 +524,37 @@ export const MAPS: MapDefinition[] = [
     id: 'the-rift',
     name: 'The Rift',
     description:
-      'Four basins split by an X-shaped pass. Partial cover lines the banks; VIPs sit in opposite corners guarded by five minions.',
+      'Four basins split by an X-shaped pass. Partial cover lines the banks; fortified bases sit in opposite corners guarded by five defenders.',
     width: RIFT_WIDTH,
     height: RIFT_HEIGHT,
     // Lakes = inner rectangle minus the two diagonal corridors (built via scanlines)
     lakes: buildRiftLakes(),
     // Walls = short edge strips + diagonal partial strips; triangle tips remain uncovered
     walls: [...riftEdgeWalls, ...riftDiagonalWalls],
-    // Five minions per team, mirrored (clustered to protect the VIPs)
+    // Five minions per team, mirrored (clustered to protect the bases)
     playerSpawns: riftPlayerSpawns,
     botSpawns: riftBotSpawns,
-    // VIPs pinned to corners
+    // Bases pinned to corners
     vipUnits: [
-      { team: 0, position: RIFT_VIP_BL },
-      { team: 1, position: RIFT_VIP_TR },
+      { team: 0, position: RIFT_BASE_BL, unitId: 'base' },
+      { team: 1, position: RIFT_BASE_TR, unitId: 'base' },
+    ],
+  },
+  {
+    id: 'the-rift-fog',
+    name: 'The Rift (Fog)',
+    description:
+      'The Rift cloaked in dense fog—defend your corner base and hunt the enemy through the misty cross-pass.',
+    width: RIFT_WIDTH,
+    height: RIFT_HEIGHT,
+    lakes: buildRiftLakes(),
+    walls: [...riftEdgeWalls, ...riftDiagonalWalls],
+    playerSpawns: riftPlayerSpawns,
+    botSpawns: riftBotSpawns,
+    // Bases pinned to corners
+    vipUnits: [
+      { team: 0, position: RIFT_BASE_BL, unitId: 'base' },
+      { team: 1, position: RIFT_BASE_TR, unitId: 'base' },
     ],
   },
   {
