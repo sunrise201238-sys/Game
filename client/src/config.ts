@@ -115,7 +115,7 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
     id: 'base',
     name: 'Base',
     color: '#facc15',
-    radius: 14,
+    radius: 18,
     maxHp: 50,
     collideDamage: 0,
     knockback: 0,
@@ -301,28 +301,22 @@ const riftEdgeWalls: Rect[] = [
 ];
 
 // --- Bases and defenders (5 per team), mirrored & tucked in corners --------
-const RIFT_BASE_BL: XY = { x: 128, y: RIFT_HEIGHT - 128 };
-const RIFT_BASE_TR: XY = { x: RIFT_WIDTH - 128, y: 128 };
+const RIFT_BASE_BL: XY = { x: 112, y: RIFT_HEIGHT - 96 };
+const RIFT_BASE_TR: XY = { x: RIFT_WIDTH - 112, y: 96 };
 
-// Guard cluster near a corner, arcing along the corner (bottom-left version)
-function guardClusterBL(
-  n = 5,
-  angStartDeg = -105,
-  angEndDeg = -15,
-  rStart = 92,
-  rStep = 22,
-): XY[] {
-  const pts: XY[] = [];
-  for (let i = 0; i < n; i++) {
-    const t = n === 1 ? 0.5 : i / (n - 1);
-    const ang = ((angStartDeg + t * (angEndDeg - angStartDeg)) * Math.PI) / 180;
-    const r = rStart + i * rStep;
-    pts.push({ x: RIFT_BASE_BL.x + r * Math.cos(ang), y: RIFT_BASE_BL.y + r * Math.sin(ang) });
-  }
-  return pts;
-}
+// Defender cluster offset from the base, inspired by the reference layout (bottom-left version)
+const RIFT_DEFENDER_OFFSETS: XY[] = [
+  { x: 40, y: -72 },
+  { x: 84, y: -108 },
+  { x: 136, y: -92 },
+  { x: 112, y: -48 },
+  { x: 60, y: -32 },
+];
 
-const riftPlayerSpawns = guardClusterBL(5);
+const riftPlayerSpawns = RIFT_DEFENDER_OFFSETS.map((offset) => ({
+  x: RIFT_BASE_BL.x + offset.x,
+  y: RIFT_BASE_BL.y + offset.y,
+}));
 const riftBotSpawns = riftPlayerSpawns.map((p) => ({ x: RIFT_WIDTH - p.x, y: RIFT_HEIGHT - p.y })); // perfect rotational symmetry
 
 
