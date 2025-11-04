@@ -293,11 +293,11 @@ const riftEdgeWalls: Rect[] = [
   // top
   horizWall(RIFT_X_LEFT + 140 + 108, RIFT_Y_TOP - 18, (RIFT_X_RIGHT - RIFT_X_LEFT - 280) - 108, 36),
   // bottom
-  horizWall(RIFT_X_LEFT + 220, RIFT_Y_BOTTOM - 18, RIFT_X_RIGHT - RIFT_X_LEFT - 440, 36),
+  horizWall(RIFT_X_LEFT + 220 - 108, RIFT_Y_BOTTOM - 18, (RIFT_X_RIGHT - RIFT_X_LEFT - 440) + 108, 36),
   // left
-  vertWall(RIFT_X_LEFT - 18, RIFT_Y_TOP + 160, 36, RIFT_Y_BOTTOM - RIFT_Y_TOP - 320),
+  vertWall(RIFT_X_LEFT - 18, RIFT_Y_TOP + 160 + 108, 36, (RIFT_Y_BOTTOM - RIFT_Y_TOP - 320) - 108),
   // right
-  vertWall(RIFT_X_RIGHT - 18, RIFT_Y_TOP + 160, 36, RIFT_Y_BOTTOM - RIFT_Y_TOP - 320),
+  vertWall(RIFT_X_RIGHT - 18, RIFT_Y_TOP + 160, 36, (RIFT_Y_BOTTOM - RIFT_Y_TOP - 320) -108),
 ];
 
 // --- Bases and defenders (6 per team), mirrored & tucked in corners --------
