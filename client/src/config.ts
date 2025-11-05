@@ -271,7 +271,7 @@ const RIFT_EDGE_OFFSET = RIFT_CORRIDOR_WIDTH / 2 + RIFT_WALL_THICK * 0.4; // sit
 // Two short strips on each side of each diagonal (8 diagonal wall clusters total)
 const RIFT_WALL_RANGES: Array<[number, number]> = [
   [0.18, 0.32],
-  [0.68, 0.79],
+  [0.68, 0.81],
 ];
 
 const riftDiagonalWalls: Rect[] = [
@@ -293,9 +293,9 @@ const riftEdgeWalls: Rect[] = [
   // top
   horizWall(RIFT_X_LEFT + 140 + 108, RIFT_Y_TOP - 18, (RIFT_X_RIGHT - RIFT_X_LEFT - 280) - 108, 36),
   // bottom
-  horizWall(RIFT_X_LEFT + 162, RIFT_Y_BOTTOM - 18, RIFT_X_RIGHT - RIFT_X_LEFT - 400, 36),
+  horizWall(RIFT_X_LEFT + 140 + 108, RIFT_Y_BOTTOM - 18, (RIFT_X_RIGHT - RIFT_X_LEFT - 280) - 108, 36),
   // left
-  vertWall(RIFT_X_LEFT - 18, RIFT_Y_TOP + 160 + 108, 36, (RIFT_Y_BOTTOM - RIFT_Y_TOP - 320) - 108),
+  vertWall(RIFT_X_LEFT - 18, RIFT_Y_TOP + 160, 36, (RIFT_Y_BOTTOM - RIFT_Y_TOP - 320) - 108),
   // right
   vertWall(RIFT_X_RIGHT - 18, RIFT_Y_TOP + 160, 36, (RIFT_Y_BOTTOM - RIFT_Y_TOP - 320) -108),
 ];
