@@ -142,7 +142,12 @@ const engine = new GameEngine({
 currentState = engine.getSnapshot();
 updateUi(currentState);
 const renderScene = () => {
-  const localTeam: TeamId = currentState.mode === 'online' ? onlineTeam ?? engine.getPlayerTeam() : 0;
+  let localTeam: TeamId = 0;
+  if (currentState.mode === 'online') {
+    localTeam = onlineTeam ?? engine.getPlayerTeam();
+  } else if (currentState.mode === 'hotseat') {
+    localTeam = currentState.activeTeam;
+  }
   renderer.setPerspectiveTeam(localTeam);
   renderer.render(currentState, {
     dragOrigin: isDragging ? dragOrigin : null,

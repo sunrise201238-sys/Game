@@ -72,10 +72,10 @@ const FOG_MINION_REVEAL_RADIUS = 110;
 const FOG_BASE_REVEAL_RADIUS = 300;
 const FOG_PROJECTILE_REVEAL_RADIUS = 60;
 const FOG_IGNITE_REVEAL_RADIUS = 60;
-const FOG_OVERLAY_ALPHA = 0.82;
+const FOG_OVERLAY_ALPHA = 0.68;
 const FOG_REVEAL_INNER_RATIO = 0.35;
 const FOG_REVEAL_MID_RATIO = 0.7;
-const FOG_ENEMY_BASE_ALPHA = 0.45;
+const FOG_ENEMY_BASE_ALPHA = 0.65;
 const FOG_FRIENDLY_GRAVE_ALPHA = 0.55;
 
 interface FogReveal {
@@ -454,8 +454,8 @@ export class Renderer {
     const midRadius = Math.max(innerRadius, reveal.radius * FOG_REVEAL_MID_RATIO);
     const gradient = ctx.createRadialGradient(reveal.x, reveal.y, innerRadius, reveal.x, reveal.y, reveal.radius);
     const midStop = Math.min(1, midRadius / Math.max(reveal.radius, 1));
-    gradient.addColorStop(0, 'rgba(0,0,0,1)');
-    gradient.addColorStop(midStop, 'rgba(0,0,0,0.7)');
+    gradient.addColorStop(0, 'rgba(0,0,0,0.9)');
+    gradient.addColorStop(midStop, 'rgba(0,0,0,0.45)');
     gradient.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = gradient;
     ctx.beginPath();
@@ -921,14 +921,8 @@ export class Renderer {
     }
     if (state.phase === 'animating') return 'Resolving move…';
     if (state.mode === 'bot' && state.phase === 'bot-planning') return 'Bot is planning…';
-    if (state.mode === 'hotseat') {
-      return state.activeTeam === 0
-        ? `Round ${state.round}: Team One`
-        : `Round ${state.round}: Team Two`;
-    }
-    return state.activeTeam === 0
-      ? `Round ${state.round}: Your turn`
-      : `Round ${state.round}: Bot turn`;
+    const teamLabel = state.activeTeam === 0 ? 'Team One' : 'Team Two';
+    return `Round ${state.round}: ${teamLabel}`;
   }
 
   private getUpcomingUnitId(state: GameState, team: TeamId): string | null {
