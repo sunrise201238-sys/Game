@@ -293,7 +293,7 @@ const riftEdgeWalls: Rect[] = [
   // top
   horizWall(RIFT_X_LEFT + 140 + 108, RIFT_Y_TOP - 18, (RIFT_X_RIGHT - RIFT_X_LEFT - 280) - 108, 36),
   // bottom
-  horizWall(RIFT_X_LEFT + 50 + 108, RIFT_Y_BOTTOM - 18, (RIFT_X_RIGHT - RIFT_X_LEFT - 280) - 108, 36),
+  horizWall(RIFT_X_LEFT + 46 + 108, RIFT_Y_BOTTOM - 18, (RIFT_X_RIGHT - RIFT_X_LEFT - 280) - 108, 36),
   // left
   vertWall(RIFT_X_LEFT - 18, RIFT_Y_TOP + 256, 36, (RIFT_Y_BOTTOM - RIFT_Y_TOP - 283) - 108),
   // right
