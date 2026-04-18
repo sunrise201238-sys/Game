@@ -398,6 +398,7 @@ export class GameEngine {
     const projectiles: ProjectileState[] = [];
     if (attacker.def.projectile && launchSpeed > 0) {
       const spec = attacker.def.projectile;
+      const projectileColor = spec.teamColors?.[attacker.team] ?? spec.color;
       const projectile: ProjectileState = {
         id: `proj-${this.projectileCounter++}`,
         position: { ...attacker.position },
@@ -407,7 +408,7 @@ export class GameEngine {
         damage: spec.damage,
         knockback: spec.knockback,
         ownerTeam: attacker.team,
-        color: spec.color,
+        color: projectileColor,
       };
       projectiles.push(projectile);
     }
