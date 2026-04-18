@@ -170,10 +170,11 @@ const engine = new GameEngine(
 
 currentState = engine.getSnapshot();
 updateUi(currentState);
-const clearPreparedAction = () => {
+
+function clearPreparedAction(): void {
   preparedActionVector = null;
   preparedActionUnitId = null;
-};
+}
 
 const normalizeAngleDeg = (degrees: number): number => {
   let normalized = degrees % 360;
@@ -1405,3 +1406,6 @@ directionLever.value = `${Math.round(setModeAngleDeg)}`;
 powerLever.value = `${Math.round(setModePowerPercent)}`;
 updateSetModeReadouts();
 updateConfirmShotUi();
+applyStageAspect(currentMap);
+updateZoomUi();
+engine.startNewGame(currentMap, currentMode);
