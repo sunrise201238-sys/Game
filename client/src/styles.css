@@ -258,6 +258,86 @@ main > * {
   aspect-ratio: var(--board-aspect, 16 / 9);
 }
 
+.fire-controls {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  right: 0.75rem;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: stretch;
+  pointer-events: none;
+}
+
+.fire-controls > * {
+  pointer-events: auto;
+}
+
+#fire-mode-toggle {
+  align-self: flex-end;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  padding: 0.45rem 0.8rem;
+  color: #e2e8f0;
+  background: rgba(2, 8, 23, 0.78);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+#fire-mode-toggle[aria-pressed='true'] {
+  color: #0f172a;
+  background: linear-gradient(135deg, rgba(83, 225, 255, 0.95), rgba(255, 111, 145, 0.95));
+}
+
+.lever-panel {
+  width: 100%;
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.6rem 0.7rem 0.75rem;
+  border-radius: 10px;
+  background: rgba(2, 8, 23, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(2px);
+}
+
+.lever-panel[hidden] {
+  display: none;
+}
+
+.lever-panel label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: rgba(226, 232, 240, 0.9);
+  display: flex;
+  justify-content: space-between;
+}
+
+.lever-panel input[type='range'] {
+  width: 100%;
+  margin: 0;
+}
+
+#lever-fire-btn {
+  margin-top: 0.35rem;
+  border: none;
+  border-radius: 8px;
+  padding: 0.45rem 0.75rem;
+  font-weight: 700;
+  color: #0b132b;
+  background: linear-gradient(135deg, #53e1ff, #ff6f91);
+  cursor: pointer;
+}
+
+#lever-fire-btn:disabled,
+#fire-mode-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .board-controls {
   display: flex;
   flex-wrap: wrap;

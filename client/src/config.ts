@@ -33,6 +33,10 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
       damage: 32,
       knockback: 140,
       color: '#7ec8e3',
+      teamColors: {
+        0: '#7ec8e3',
+        1: '#fb923c',
+      },
       previewScale: 1.2,
       previewExtension: 240,
     },
