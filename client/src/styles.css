@@ -197,25 +197,38 @@ main > * {
   position: relative;
   width: 100%;
   max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  touch-action: none;
+}
+
+#map-viewport {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
   aspect-ratio: var(--board-aspect, 16 / 9);
   border-radius: 14px;
   overflow: hidden;
   background: radial-gradient(circle at center, rgba(28, 38, 56, 0.85), rgba(9, 17, 31, 0.95));
-  touch-action: none;
+  flex: 0 0 auto;
 }
 
 #gameCanvas {
   display: block;
   width: 100%;
-  height: 100%;
+  height: auto;
+  aspect-ratio: var(--board-aspect, 16 / 9);
   touch-action: none;
 }
 
 #board-stage:fullscreen,
 #board-stage:-webkit-full-screen {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 0.35rem;
   width: 100vw;
   height: 100vh;
   height: 100dvh;
@@ -223,14 +236,20 @@ main > * {
   max-height: none;
   aspect-ratio: auto;
   border-radius: 0;
+  padding:
+    calc(env(safe-area-inset-top, 0px) + 0.6rem)
+    calc(env(safe-area-inset-right, 0px) + 0.45rem)
+    calc(env(safe-area-inset-bottom, 0px) + 0.95rem)
+    calc(env(safe-area-inset-left, 0px) + 0.45rem);
+  box-sizing: border-box;
+  background: rgba(3, 8, 20, 0.96);
+  overflow: hidden;
 }
 
-#board-stage:fullscreen #gameCanvas,
-#board-stage:-webkit-full-screen #gameCanvas {
+#board-stage:fullscreen #map-viewport,
+#board-stage:-webkit-full-screen #map-viewport {
   width: var(--board-fullscreen-width, 100vw);
-  height: var(--board-fullscreen-height, 100vh);
-  max-width: 100vw;
-  max-height: 100vh;
+  max-width: 100%;
   aspect-ratio: var(--board-aspect, 16 / 9);
 }
 
@@ -238,8 +257,10 @@ main > * {
   position: fixed;
   inset: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 0.35rem;
   width: 100vw;
   height: 100vh;
   height: 100dvh;
@@ -248,14 +269,95 @@ main > * {
   aspect-ratio: auto;
   border-radius: 0;
   z-index: 1000;
+  padding:
+    calc(env(safe-area-inset-top, 0px) + 0.6rem)
+    calc(env(safe-area-inset-right, 0px) + 0.45rem)
+    calc(env(safe-area-inset-bottom, 0px) + 0.95rem)
+    calc(env(safe-area-inset-left, 0px) + 0.45rem);
+  box-sizing: border-box;
+  background: rgba(3, 8, 20, 0.96);
+  overflow: hidden;
 }
 
-#board-stage.board-stage--pseudo-fullscreen #gameCanvas {
+#board-stage.board-stage--pseudo-fullscreen #map-viewport {
   width: var(--board-fullscreen-width, 100vw);
-  height: var(--board-fullscreen-height, 100vh);
-  max-width: 100vw;
-  max-height: 100vh;
+  max-width: 100%;
   aspect-ratio: var(--board-aspect, 16 / 9);
+}
+
+.fire-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: stretch;
+  width: min(100%, var(--board-fullscreen-width, 100%));
+}
+
+.fire-controls > * {
+  pointer-events: auto;
+}
+
+#fire-mode-toggle {
+  align-self: flex-end;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  padding: 0.45rem 0.8rem;
+  color: #e2e8f0;
+  background: rgba(2, 8, 23, 0.78);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+#fire-mode-toggle[aria-pressed='true'] {
+  color: #0f172a;
+  background: linear-gradient(135deg, rgba(83, 225, 255, 0.95), rgba(255, 111, 145, 0.95));
+}
+
+.lever-panel {
+  width: 100%;
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.45rem 0.65rem 0.55rem;
+  border-radius: 10px;
+  background: rgba(2, 8, 23, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(2px);
+}
+
+.lever-panel[hidden] {
+  display: none;
+}
+
+.lever-panel label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: rgba(226, 232, 240, 0.9);
+  display: flex;
+  justify-content: space-between;
+}
+
+.lever-panel input[type='range'] {
+  width: 100%;
+  margin: 0;
+}
+
+#lever-fire-btn {
+  margin-top: 0.35rem;
+  border: none;
+  border-radius: 8px;
+  padding: 0.45rem 0.75rem;
+  font-weight: 700;
+  color: #0b132b;
+  background: linear-gradient(135deg, #53e1ff, #ff6f91);
+  cursor: pointer;
+}
+
+#lever-fire-btn:disabled,
+#fire-mode-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .board-controls {
