@@ -13,9 +13,7 @@ const phaseLabel = document.getElementById('phase-label') as HTMLSpanElement;
 const playerList = document.getElementById('player-units') as HTMLUListElement;
 const botList = document.getElementById('bot-units') as HTMLUListElement;
 const hintText = document.getElementById('hint-text') as HTMLParagraphElement;
-const modeButtons = Array.from(
-  document.querySelectorAll<HTMLButtonElement>('[data-mode]')
-);
+const modeButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-mode]'));
 const playerHeading = document.getElementById('team-a-label') as HTMLHeadingElement;
 const opponentHeading = document.getElementById('team-b-label') as HTMLHeadingElement;
 const zoomInButton = document.getElementById('zoom-in') as HTMLButtonElement;
@@ -26,11 +24,17 @@ const boardStage = document.getElementById('board-stage') as HTMLDivElement;
 const body = document.body as HTMLBodyElement;
 const fullscreenButton = document.getElementById('fullscreen-toggle') as HTMLButtonElement;
 const controlModeButtons = Array.from(
-  document.querySelectorAll<HTMLButtonElement>('[data-control-mode]')
+  document.querySelectorAll<HTMLButtonElement>('[data-control-mode]'),
 );
 const confirmShotButton = document.getElementById('confirm-shot-btn') as HTMLButtonElement;
+const setShotControls = document.getElementById('set-shot-controls') as HTMLDivElement;
+const directionLever = document.getElementById('direction-lever') as HTMLInputElement;
+const powerLever = document.getElementById('power-lever') as HTMLInputElement;
+const directionValue = document.getElementById('direction-value') as HTMLSpanElement;
+const powerValue = document.getElementById('power-value') as HTMLSpanElement;
 const ZOOM_STEP = 1.2;
 const DRAG_INPUT_MULTIPLIER = 1.35;
+const LEVER_DEFAULT_POWER_PERCENT = 65;
 type ShotControlMode = 'drag' | 'set';
 
 let currentMap = getMapById(DEFAULT_MAP_ID);
@@ -65,8 +69,8 @@ const prefersPseudoFullscreen = (() => {
   }
   const maxScreenDimension = Math.max(window.screen?.width ?? 0, window.screen?.height ?? 0);
   const userAgent = navigator.userAgent ?? '';
-  const isiPadLike = /iPad|iPadOS/i.test(userAgent) ||
-    (userAgent.includes('Macintosh') && touchPoints > 1);
+  const isiPadLike =
+    /iPad|iPadOS/i.test(userAgent) || (userAgent.includes('Macintosh') && touchPoints > 1);
   const isLargeTouchDisplay = maxScreenDimension >= 1000;
   return isiPadLike || isLargeTouchDisplay;
 })();
@@ -107,7 +111,6 @@ const applyStageAspect = (map: MapDefinition) => {
   updateFullscreenSizing();
 };
 
-
 let currentState: GameState;
 let isDragging = false;
 let dragOrigin: Vector | null = null;
@@ -116,6 +119,9 @@ let dragPointerId: number | null = null;
 let dragVector: Vector | null = null;
 let preparedActionVector: Vector | null = null;
 let preparedActionUnitId: string | null = null;
+let setModeAngleDeg = 0;
+let setModePowerPercent = LEVER_DEFAULT_POWER_PERCENT;
+let leverInitializedForUnitId: string | null = null;
 let isPanning = false;
 let panPointerId: number | null = null;
 let panLast: { x: number; y: number } | null = null;
@@ -129,39 +135,127 @@ interface PinchState {
   lastCenterClient: { x: number; y: number };
 }
 let pinchState: PinchState | null = null;
-const engine = new GameEngine({
-  onState: (state) => {
-    if (state.mapId !== currentMap.id) {
-      currentMap = getMapById(state.mapId);
-      renderer.setMap(currentMap);
-      mapSelect.value = currentMap.id;
-      applyStageAspect(currentMap);
-      updateZoomUi();
-    }
-    currentState = state;
-    const activeUnitId = getActiveUnit(state)?.id ?? null;
-    if (
-      !engine.canPlayerAct() ||
-      state.phase !== 'aim' ||
-      !preparedActionVector ||
-      !preparedActionUnitId ||
-      preparedActionUnitId !== activeUnitId
-    ) {
-      clearPreparedAction();
-    }
-    updateUi(state);
-    renderScene();
+const engine = new GameEngine(
+  {
+    onState: (state) => {
+      if (state.mapId !== currentMap.id) {
+        currentMap = getMapById(state.mapId);
+        renderer.setMap(currentMap);
+        mapSelect.value = currentMap.id;
+        applyStageAspect(currentMap);
+        updateZoomUi();
+      }
+      currentState = state;
+      const activeUnitId = getActiveUnit(state)?.id ?? null;
+      if (
+        !engine.canPlayerAct() ||
+        state.phase !== 'aim' ||
+        !preparedActionVector ||
+        !preparedActionUnitId ||
+        preparedActionUnitId !== activeUnitId
+      ) {
+        clearPreparedAction();
+      }
+      updateUi(state);
+      renderScene();
+    },
+    onFrame: () => {
+      // no-op: renderer re-renders when state updates
+    },
   },
-  onFrame: () => {
-    // no-op: renderer re-renders when state updates
-  },
-}, currentMap, undefined, currentMode);
+  currentMap,
+  undefined,
+  currentMode,
+);
 
 currentState = engine.getSnapshot();
 updateUi(currentState);
 const clearPreparedAction = () => {
   preparedActionVector = null;
   preparedActionUnitId = null;
+};
+
+const normalizeAngleDeg = (degrees: number): number => {
+  let normalized = degrees % 360;
+  if (normalized > 180) normalized -= 360;
+  if (normalized < -180) normalized += 360;
+  return normalized;
+};
+
+const getSetModeVector = (unit: UnitState): Vector => {
+  const maxPower = Math.max(1, unit.def.maxPower);
+  const power = Math.max(0, Math.min(1, setModePowerPercent / 100)) * maxPower;
+  const radians = (setModeAngleDeg * Math.PI) / 180;
+  return {
+    x: Math.cos(radians) * power,
+    y: Math.sin(radians) * power,
+  };
+};
+
+const updateSetModeReadouts = () => {
+  directionValue.textContent = `${Math.round(setModeAngleDeg)}°`;
+  powerValue.textContent = `${Math.round(setModePowerPercent)}%`;
+};
+
+const syncPreparedActionFromLevers = () => {
+  if (shotControlMode !== 'set') {
+    return;
+  }
+  if (!engine.canPlayerAct() || currentState.phase !== 'aim') {
+    clearPreparedAction();
+    return;
+  }
+  const activeUnit = getActiveUnit(currentState);
+  if (!activeUnit) {
+    clearPreparedAction();
+    return;
+  }
+  preparedActionVector = getSetModeVector(activeUnit);
+  preparedActionUnitId = activeUnit.id;
+};
+
+const ensureSetModeDefaults = (state: GameState) => {
+  if (shotControlMode !== 'set' || !engine.canPlayerAct() || state.phase !== 'aim') {
+    return;
+  }
+  const activeUnit = getActiveUnit(state);
+  if (!activeUnit) {
+    return;
+  }
+  if (leverInitializedForUnitId === activeUnit.id) {
+    return;
+  }
+  const enemies = state.units.filter((unit) => unit.team !== activeUnit.team && unit.alive);
+  if (enemies.length > 0) {
+    let closest = enemies[0];
+    let closestDistance = Infinity;
+    for (const enemy of enemies) {
+      const distance = Math.hypot(
+        enemy.position.x - activeUnit.position.x,
+        enemy.position.y - activeUnit.position.y,
+      );
+      if (distance < closestDistance) {
+        closest = enemy;
+        closestDistance = distance;
+      }
+    }
+    setModeAngleDeg = normalizeAngleDeg(
+      (Math.atan2(
+        closest.position.y - activeUnit.position.y,
+        closest.position.x - activeUnit.position.x,
+      ) *
+        180) /
+        Math.PI,
+    );
+  } else {
+    setModeAngleDeg = 0;
+  }
+  setModePowerPercent = LEVER_DEFAULT_POWER_PERCENT;
+  directionLever.value = `${Math.round(setModeAngleDeg)}`;
+  powerLever.value = `${Math.round(setModePowerPercent)}`;
+  updateSetModeReadouts();
+  leverInitializedForUnitId = activeUnit.id;
+  syncPreparedActionFromLevers();
 };
 
 const getPreviewLine = (): { origin: Vector; current: Vector } | null => {
@@ -197,6 +291,7 @@ const renderScene = () => {
     dragOrigin: previewLine?.origin ?? null,
     dragCurrent: previewLine?.current ?? null,
   });
+  updateSetShotControlsUi();
 };
 
 const updateZoomUi = () => {
@@ -207,6 +302,41 @@ const updateZoomUi = () => {
   const maxThreshold = zoomLimits.max - 0.01;
   zoomOutButton.disabled = zoom <= minThreshold;
   zoomInButton.disabled = zoom >= maxThreshold;
+};
+
+const updateSetShotControlsUi = () => {
+  const canShow =
+    shotControlMode === 'set' &&
+    engine.canPlayerAct() &&
+    currentState.phase === 'aim' &&
+    (currentMode !== 'online' || onlineStatus === 'matched') &&
+    !onlinePendingAction;
+  if (!canShow) {
+    setShotControls.hidden = true;
+    return;
+  }
+  const activeUnit = getActiveUnit(currentState);
+  if (!activeUnit) {
+    setShotControls.hidden = true;
+    return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  const stageRect = boardStage.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) {
+    setShotControls.hidden = true;
+    return;
+  }
+  const offset = renderer.getOffset();
+  const view = renderer.getViewSize();
+  const ratioX = (activeUnit.position.x - offset.x) / view.x;
+  const ratioY = (activeUnit.position.y - offset.y) / view.y;
+  const stageOffsetX = rect.left - stageRect.left;
+  const stageOffsetY = rect.top - stageRect.top;
+  const top = stageOffsetY + Math.max(82, Math.min(rect.height - 10, ratioY * rect.height - 22));
+  const left = stageOffsetX + Math.max(68, Math.min(rect.width - 68, ratioX * rect.width));
+  setShotControls.style.left = `${left}px`;
+  setShotControls.style.top = `${top}px`;
+  setShotControls.hidden = false;
 };
 
 const fullscreenDocument = document as Document & {
@@ -436,6 +566,10 @@ controlModeButtons.forEach((button) => {
     }
     shotControlMode = mode;
     clearPreparedAction();
+    leverInitializedForUnitId = null;
+    if (shotControlMode === 'set') {
+      ensureSetModeDefaults(currentState);
+    }
     setActiveControlModeButton(mode);
     updateConfirmShotUi();
     renderScene();
@@ -465,6 +599,22 @@ confirmShotButton.addEventListener('click', () => {
   }
   engine.beginPlayerAction(preparedActionVector);
   clearPreparedAction();
+  updateConfirmShotUi();
+  renderScene();
+});
+
+directionLever.addEventListener('input', () => {
+  setModeAngleDeg = normalizeAngleDeg(Number(directionLever.value));
+  updateSetModeReadouts();
+  syncPreparedActionFromLevers();
+  updateConfirmShotUi();
+  renderScene();
+});
+
+powerLever.addEventListener('input', () => {
+  setModePowerPercent = Math.max(0, Math.min(100, Number(powerLever.value)));
+  updateSetModeReadouts();
+  syncPreparedActionFromLevers();
   updateConfirmShotUi();
   renderScene();
 });
@@ -633,7 +783,10 @@ const beginPinchGesture = () => {
   }
   const [firstId, firstPosition] = firstEntry;
   const [secondId, secondPosition] = secondEntry;
-  const distance = Math.hypot(firstPosition.clientX - secondPosition.clientX, firstPosition.clientY - secondPosition.clientY);
+  const distance = Math.hypot(
+    firstPosition.clientX - secondPosition.clientX,
+    firstPosition.clientY - secondPosition.clientY,
+  );
   if (!Number.isFinite(distance) || distance <= 0) {
     return;
   }
@@ -694,7 +847,10 @@ const updatePinchGesture = () => {
   }
   const initialDistance = pinchState.initialDistance;
   if (initialDistance > 0) {
-    const currentDistance = Math.hypot(first.clientX - second.clientX, first.clientY - second.clientY);
+    const currentDistance = Math.hypot(
+      first.clientX - second.clientX,
+      first.clientY - second.clientY,
+    );
     if (Number.isFinite(currentDistance) && currentDistance > 0) {
       const factor = currentDistance / initialDistance;
       const anchor = toWorldPointFromClient(centerClient.x, centerClient.y);
@@ -830,8 +986,11 @@ canvas.addEventListener('pointerdown', (event) => {
   const pointer = toWorldPoint(event);
   const canAct = engine.canPlayerAct();
   const activeUnit = canAct ? getActiveUnit(currentState) : null;
-  if (canAct && activeUnit) {
-    const distanceToUnit = Math.hypot(pointer.x - activeUnit.position.x, pointer.y - activeUnit.position.y);
+  if (canAct && activeUnit && shotControlMode !== 'set') {
+    const distanceToUnit = Math.hypot(
+      pointer.x - activeUnit.position.x,
+      pointer.y - activeUnit.position.y,
+    );
     if (distanceToUnit <= activeUnit.def.radius + 12) {
       isDragging = true;
       dragOrigin = { ...activeUnit.position };
@@ -997,9 +1156,10 @@ function toWorldPointFromClient(clientX: number, clientY: number): Vector {
 
 function updateUi(state: GameState): void {
   const activeUnit = getActiveUnit(state);
+  ensureSetModeDefaults(state);
   roundLabel.textContent = `Round ${state.round}`;
   setActiveModeButton(state.mode);
-  const localTeam: TeamId = state.mode === 'online' ? onlineTeam ?? engine.getPlayerTeam() : 0;
+  const localTeam: TeamId = state.mode === 'online' ? (onlineTeam ?? engine.getPlayerTeam()) : 0;
 
   let phaseText = '';
   if (state.mode === 'online') {
@@ -1009,15 +1169,15 @@ function updateUi(state: GameState): void {
       onlineStatus === 'queued' || onlineStatus === 'connecting'
         ? 'Cancel Search'
         : onlineStatus === 'matched'
-        ? 'Start New Match'
-        : 'Find Match';
+          ? 'Start New Match'
+          : 'Find Match';
     if (state.winner !== null) {
       phaseText =
         state.winner === 'draw'
           ? 'Draw'
           : state.winner === localTeam
-          ? 'You win!'
-          : 'Opponent wins!';
+            ? 'You win!'
+            : 'Opponent wins!';
     } else if (onlineStatus !== 'matched') {
       switch (onlineStatus) {
         case 'connecting':
@@ -1052,10 +1212,10 @@ function updateUi(state: GameState): void {
         state.winner === 'draw'
           ? 'Draw'
           : state.winner === 0
-          ? 'Team One Wins!'
-          : state.mode === 'bot'
-          ? 'Bot Wins!'
-          : 'Team Two Wins!';
+            ? 'Team One Wins!'
+            : state.mode === 'bot'
+              ? 'Bot Wins!'
+              : 'Team Two Wins!';
     } else if (state.phase === 'aim') {
       if (state.mode === 'hotseat') {
         phaseText = state.activeTeam === 0 ? 'Team One: Aim' : 'Team Two: Aim';
@@ -1101,7 +1261,9 @@ function updateUi(state: GameState): void {
           case 'disconnected':
             return 'Connection lost. Tap "Find Match" to reconnect.';
           case 'error':
-            return onlineStatusMessage ? `Matchmaking error: ${onlineStatusMessage}` : 'Matchmaking error. Please try again.';
+            return onlineStatusMessage
+              ? `Matchmaking error: ${onlineStatusMessage}`
+              : 'Matchmaking error. Please try again.';
           default:
             return 'Tap "Find Match" to battle another player online.';
         }
@@ -1112,7 +1274,7 @@ function updateUi(state: GameState): void {
       const suffix = onlineStatusMessage && state.round === 1 ? ` ${onlineStatusMessage}` : '';
       return state.activeTeam === localTeam
         ? shotControlMode === 'set'
-          ? `Set + Confirm mode: drag to set aim, release, then tap "Confirm Shot".${suffix}`
+          ? `Set + Confirm mode: use Direction + Power levers, then tap "Confirm Shot".${suffix}`
           : `Drag your highlighted unit away from where you want it to travel, then release.${suffix}`
         : 'Opponent is acting — watch the field.';
     }
@@ -1128,15 +1290,15 @@ function updateUi(state: GameState): void {
     if (state.mode === 'hotseat') {
       return state.activeTeam === 0
         ? shotControlMode === 'set'
-          ? 'Team One: drag to set aim, then tap "Confirm Shot".'
+          ? 'Team One: set Direction + Power levers, then tap "Confirm Shot".'
           : 'Team One: drag the highlighted unit opposite your desired path.'
         : shotControlMode === 'set'
-          ? 'Team Two: drag to set aim, then tap "Confirm Shot".'
+          ? 'Team Two: set Direction + Power levers, then tap "Confirm Shot".'
           : 'Team Two: drag the highlighted unit opposite your desired path.';
     }
     return state.activeTeam === 0
       ? shotControlMode === 'set'
-        ? 'Set + Confirm mode: drag to set aim, then tap "Confirm Shot".'
+        ? 'Set + Confirm mode: set Direction + Power levers, then tap "Confirm Shot".'
         : 'Drag your highlighted unit away from where you want it to travel, then release.'
       : 'Bot is acting — watch the field.';
   })();
@@ -1147,7 +1309,12 @@ function updateUi(state: GameState): void {
   updateConfirmShotUi();
 }
 
-function updateUnitList(container: HTMLUListElement, state: GameState, team: TeamId, activeId: string | null) {
+function updateUnitList(
+  container: HTMLUListElement,
+  state: GameState,
+  team: TeamId,
+  activeId: string | null,
+) {
   const entries = state.units
     .filter((unit) => unit.team === team)
     .map((unit) => {
@@ -1221,6 +1388,7 @@ function updateConfirmShotUi(): void {
     confirmShotButton.hidden = true;
     return;
   }
+  syncPreparedActionFromLevers();
   confirmShotButton.hidden = false;
   const canUsePreparedShot =
     Boolean(preparedActionVector) &&
@@ -1233,4 +1401,7 @@ function updateConfirmShotUi(): void {
 
 setActiveModeButton(currentMode);
 setActiveControlModeButton(shotControlMode);
+directionLever.value = `${Math.round(setModeAngleDeg)}`;
+powerLever.value = `${Math.round(setModePowerPercent)}`;
+updateSetModeReadouts();
 updateConfirmShotUi();

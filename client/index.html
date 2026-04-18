@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -45,10 +45,24 @@
               <button id="zoom-reset" type="button" aria-label="Reset zoom">Reset</button>
             </div>
             <button id="confirm-shot-btn" type="button" disabled>Confirm Shot</button>
-            <button id="fullscreen-toggle" type="button" aria-label="Enter fullscreen">Fullscreen</button>
+            <button id="fullscreen-toggle" type="button" aria-label="Enter fullscreen">
+              Fullscreen
+            </button>
           </div>
           <div id="board-stage">
             <canvas id="gameCanvas" width="960" height="540"></canvas>
+            <div id="set-shot-controls" class="set-shot-controls" hidden aria-live="polite">
+              <div class="set-shot-lever">
+                <label for="direction-lever">Direction</label>
+                <input id="direction-lever" type="range" min="-180" max="180" step="1" value="0" />
+                <span id="direction-value">0°</span>
+              </div>
+              <div class="set-shot-lever">
+                <label for="power-lever">Power</label>
+                <input id="power-lever" type="range" min="0" max="100" step="1" value="0" />
+                <span id="power-value">0%</span>
+              </div>
+            </div>
           </div>
         </section>
         <section id="team-panels">
@@ -63,7 +77,9 @@
         </section>
       </main>
       <footer>
-        <p id="hint-text">Drag your highlighted unit away from where you want it to travel, then release.</p>
+        <p id="hint-text">
+          Drag your highlighted unit away from where you want it to travel, then release.
+        </p>
       </footer>
     </div>
     <script type="module" src="/src/main.ts"></script>
