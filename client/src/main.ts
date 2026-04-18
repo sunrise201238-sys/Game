@@ -1405,3 +1405,6 @@ directionLever.value = `${Math.round(setModeAngleDeg)}`;
 powerLever.value = `${Math.round(setModePowerPercent)}`;
 updateSetModeReadouts();
 updateConfirmShotUi();
+applyStageAspect(currentMap);
+updateZoomUi();
+renderScene();

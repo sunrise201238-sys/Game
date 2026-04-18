@@ -21,6 +21,13 @@ import type {
 const PLAYER_TEAM: TeamId = 0;
 const BOT_TEAM: TeamId = 1;
 
+function cloneState<T>(value: T): T {
+  if (typeof globalThis.structuredClone === 'function') {
+    return globalThis.structuredClone(value);
+  }
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 interface EngineListeners {
   onState(state: GameState): void;
   onFrame(frame: SimulationFrame): void;
@@ -72,7 +79,7 @@ export class GameEngine {
     playerTeam: TeamId = PLAYER_TEAM
   ) {
     this.listeners = listeners;
-    this.map = structuredClone(map);
+    this.map = cloneState(map);
     this.loadout = [...loadout];
     this.mode = mode;
     this.playerTeam = playerTeam;
@@ -91,7 +98,7 @@ export class GameEngine {
       this.mode = mode;
     }
     if (map) {
-      this.map = structuredClone(map);
+      this.map = cloneState(map);
     }
     if (playerTeam !== undefined) {
       this.playerTeam = playerTeam;
@@ -123,7 +130,7 @@ export class GameEngine {
   }
 
   getSnapshot(): GameState {
-    return structuredClone(this.state);
+    return cloneState(this.state);
   }
 
   getActiveUnit(): UnitState | null {
@@ -356,13 +363,13 @@ export class GameEngine {
 
   private simulateAction(action: DragAction): SimulationResult {
     const clones: UnitClone[] = this.state.units.map((unit) => ({
-      ...structuredClone(unit),
+      ...cloneState(unit),
       velocity: { x: 0, y: 0 },
     }));
 
     const aliveAtStart = new Set(clones.filter((unit) => unit.alive).map((unit) => unit.id));
 
-    const existingZones: ZoneClone[] = this.state.zones.map((zone) => structuredClone(zone));
+    const existingZones: ZoneClone[] = this.state.zones.map((zone) => cloneState(zone));
     const zoneClones: ZoneClone[] = [...existingZones];
     const frameList: SimulationFrame[] = [];
     const inflictedStatuses = new Map<string, StatusEffect>();
@@ -762,7 +769,7 @@ export class GameEngine {
   private addZones(zones: ZoneState[]): void {
     if (!zones.length) return;
     this.state.zones.push(
-      ...zones.map((zone) => structuredClone(zone))
+      ...zones.map((zone) => cloneState(zone))
     );
     this.refreshPersistentZoneVisuals();
   }
