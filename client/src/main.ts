@@ -25,8 +25,16 @@ const zoomIndicator = document.getElementById('zoom-indicator') as HTMLSpanEleme
 const boardStage = document.getElementById('board-stage') as HTMLDivElement;
 const body = document.body as HTMLBodyElement;
 const fullscreenButton = document.getElementById('fullscreen-toggle') as HTMLButtonElement;
+const fireModeToggle = document.getElementById('fire-mode-toggle') as HTMLButtonElement;
+const leverPanel = document.getElementById('lever-panel') as HTMLDivElement;
+const leverDirectionInput = document.getElementById('lever-direction') as HTMLInputElement;
+const leverDirectionValue = document.getElementById('lever-direction-value') as HTMLSpanElement;
+const leverPowerInput = document.getElementById('lever-power') as HTMLInputElement;
+const leverPowerValue = document.getElementById('lever-power-value') as HTMLSpanElement;
+const leverFireButton = document.getElementById('lever-fire-btn') as HTMLButtonElement;
 const ZOOM_STEP = 1.2;
 const DRAG_INPUT_MULTIPLIER = 1.35;
+type FireControlMode = 'drag' | 'lever';
 
 let currentMap = getMapById(DEFAULT_MAP_ID);
 let currentMode: GameMode = 'bot';
@@ -35,6 +43,7 @@ let onlineStatus: OnlineStatus = 'idle';
 let onlineStatusMessage: string | undefined;
 let onlineTeam: TeamId | null = null;
 let onlinePendingAction = false;
+let fireControlMode: FireControlMode = 'drag';
 
 for (const map of MAPS) {
   const option = document.createElement('option');
@@ -149,9 +158,10 @@ const renderScene = () => {
     localTeam = currentState.activeTeam;
   }
   renderer.setPerspectiveTeam(localTeam);
+  const leverPreview = fireControlMode === 'lever' ? getLeverPreviewLine() : null;
   renderer.render(currentState, {
-    dragOrigin: isDragging ? dragOrigin : null,
-    dragCurrent: isDragging ? dragCurrent : null,
+    dragOrigin: isDragging ? dragOrigin : leverPreview?.origin ?? null,
+    dragCurrent: isDragging ? dragCurrent : leverPreview?.current ?? null,
   });
 };
 
@@ -343,6 +353,100 @@ const applyZoomFactor = (factor: number, anchor?: Vector) => {
   updateZoomUi();
 };
 
+const getLeverDirectionDegrees = (): number => {
+  const parsed = Number.parseFloat(leverDirectionInput.value);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+  return ((Math.round(parsed) % 360) + 360) % 360;
+};
+
+const getLeverPowerRatio = (): number => {
+  const parsed = Number.parseFloat(leverPowerInput.value);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(1, parsed / 100));
+};
+
+const getLeverActionVector = (): Vector | null => {
+  if (!engine.canPlayerAct()) {
+    return null;
+  }
+  const activeUnit = getActiveUnit(currentState);
+  if (!activeUnit) {
+    return null;
+  }
+  const radians = (getLeverDirectionDegrees() * Math.PI) / 180;
+  const magnitude = activeUnit.def.maxPower * getLeverPowerRatio();
+  return {
+    x: Math.cos(radians) * magnitude,
+    y: Math.sin(radians) * magnitude,
+  };
+};
+
+const getLeverPreviewLine = (): { origin: Vector; current: Vector } | null => {
+  if (fireControlMode !== 'lever') {
+    return null;
+  }
+  const activeUnit = getActiveUnit(currentState);
+  const vector = getLeverActionVector();
+  if (!activeUnit || !vector) {
+    return null;
+  }
+  return {
+    origin: { ...activeUnit.position },
+    current: {
+      x: activeUnit.position.x - vector.x,
+      y: activeUnit.position.y - vector.y,
+    },
+  };
+};
+
+function updateFireControlUi(): void {
+  const leverMode = fireControlMode === 'lever';
+  leverPanel.hidden = !leverMode;
+  fireModeToggle.textContent = leverMode ? 'Mode: Lever' : 'Mode: Drag';
+  fireModeToggle.setAttribute('aria-pressed', leverMode ? 'true' : 'false');
+  const direction = getLeverDirectionDegrees();
+  leverDirectionValue.textContent = `${direction}°`;
+  const powerPercent = Math.round(getLeverPowerRatio() * 100);
+  leverPowerValue.textContent = `${powerPercent}%`;
+  const canAct = engine.canPlayerAct();
+  const actionReady = Boolean(getLeverActionVector());
+  fireModeToggle.disabled = currentMode === 'online' && onlineStatus !== 'matched';
+  leverDirectionInput.disabled = !leverMode || !canAct;
+  leverPowerInput.disabled = !leverMode || !canAct;
+  leverFireButton.disabled = !leverMode || !actionReady || (currentMode === 'online' && onlinePendingAction);
+}
+
+const submitLeverAction = () => {
+  if (fireControlMode !== 'lever') {
+    return;
+  }
+  const actionVector = getLeverActionVector();
+  if (!actionVector) {
+    return;
+  }
+  if (currentMode === 'online') {
+    if (onlineStatus !== 'matched') {
+      return;
+    }
+    const client = onlineClient ?? ensureOnlineClient();
+    const team = onlineTeam ?? engine.getPlayerTeam();
+    const action = engine.createActionFromVector(actionVector);
+    if (!action || !client) {
+      return;
+    }
+    onlinePendingAction = true;
+    client.submitAction(action, team);
+    updateFireControlUi();
+    return;
+  }
+  engine.beginPlayerAction(actionVector);
+  updateFireControlUi();
+};
+
 renderScene();
 updateZoomUi();
 updateFullscreenUi();
@@ -441,6 +545,7 @@ restartButton.addEventListener('click', () => {
     }
   }
   dragPointerId = null;
+  updateFireControlUi();
   stopPan();
   if (currentMode === 'online') {
     const client = ensureOnlineClient();
@@ -476,6 +581,7 @@ mapSelect.addEventListener('change', () => {
   dragPointerId = null;
   stopPan();
   updateZoomUi();
+  updateFireControlUi();
   if (currentMode === 'online') {
     const client = ensureOnlineClient();
     if (onlineStatus === 'matched') {
@@ -532,6 +638,7 @@ const cancelActiveDrag = () => {
     }
   }
   renderScene();
+  updateFireControlUi();
 };
 
 const beginPinchGesture = () => {
@@ -733,6 +840,11 @@ canvas.addEventListener('pointerdown', (event) => {
   if (event.button !== 0) {
     return;
   }
+  if (fireControlMode === 'lever') {
+    event.preventDefault();
+    beginPan(event);
+    return;
+  }
 
   if (currentMode === 'online' && onlinePendingAction) {
     event.preventDefault();
@@ -813,9 +925,11 @@ const endDrag = (event: PointerEvent, cancel = false) => {
     }
     onlinePendingAction = true;
     client.submitAction(action, team);
+    updateFireControlUi();
     return;
   }
   engine.beginPlayerAction(actionVector);
+  updateFireControlUi();
 };
 
 canvas.addEventListener('pointerup', (event) => {
@@ -878,6 +992,27 @@ zoomResetButton.addEventListener('click', () => {
   renderer.refreshViewport();
   renderScene();
   updateZoomUi();
+});
+
+fireModeToggle.addEventListener('click', () => {
+  fireControlMode = fireControlMode === 'drag' ? 'lever' : 'drag';
+  cancelActiveDrag();
+  updateFireControlUi();
+  renderScene();
+});
+
+leverDirectionInput.addEventListener('input', () => {
+  updateFireControlUi();
+  renderScene();
+});
+
+leverPowerInput.addEventListener('input', () => {
+  updateFireControlUi();
+  renderScene();
+});
+
+leverFireButton.addEventListener('click', () => {
+  submitLeverAction();
 });
 
 function toWorldPoint(event: PointerEvent | WheelEvent): Vector {
@@ -989,6 +1124,10 @@ function updateUi(state: GameState): void {
     opponentHeading.textContent = 'Bot Squad';
   }
 
+  const controlHint = fireControlMode === 'lever'
+    ? 'Lever mode: choose direction + power, then press Fire.'
+    : 'Drag mode: pull opposite your intended travel direction, then release.';
+
   const baseHint = (() => {
     if (state.mode === 'online') {
       if (state.winner !== null) {
@@ -1015,7 +1154,7 @@ function updateUi(state: GameState): void {
       }
       const suffix = onlineStatusMessage && state.round === 1 ? ` ${onlineStatusMessage}` : '';
       return state.activeTeam === localTeam
-        ? `Drag your highlighted unit away from where you want it to travel, then release.${suffix}`
+        ? `${controlHint}${suffix}`
         : 'Opponent is acting — watch the field.';
     }
     if (state.winner !== null) {
@@ -1029,17 +1168,18 @@ function updateUi(state: GameState): void {
     }
     if (state.mode === 'hotseat') {
       return state.activeTeam === 0
-        ? 'Team One: drag the highlighted unit opposite your desired path.'
-        : 'Team Two: drag the highlighted unit opposite your desired path.';
+        ? `Team One: ${controlHint}`
+        : `Team Two: ${controlHint}`;
     }
     return state.activeTeam === 0
-      ? 'Drag your highlighted unit away from where you want it to travel, then release.'
+      ? controlHint
       : 'Bot is acting — watch the field.';
   })();
 
   const mapMeta = getMapById(state.mapId);
   const mapDetails = mapMeta.description ? ` • ${mapMeta.name}: ${mapMeta.description}` : '';
   hintText.textContent = `${baseHint}${mapDetails}`;
+  updateFireControlUi();
 }
 
 function updateUnitList(container: HTMLUListElement, state: GameState, team: TeamId, activeId: string | null) {
@@ -1101,3 +1241,4 @@ function setActiveModeButton(mode: GameMode): void {
 }
 
 setActiveModeButton(currentMode);
+updateFireControlUi();
