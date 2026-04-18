@@ -9,6 +9,7 @@ export interface ProjectileSpec {
   damage: number;
   knockback: number;
   color: string;
+  teamColors?: Partial<Record<TeamId, string>>;
   previewScale?: number;
   previewExtension?: number;
 }

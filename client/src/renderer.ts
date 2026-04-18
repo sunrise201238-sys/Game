@@ -1,4 +1,4 @@
-import { HP_BAR_HEIGHT } from './config';
+import { GAME_CONSTANTS, HP_BAR_HEIGHT } from './config';
 import { normalize, scale } from './math';
 import type {
   GameState,
@@ -700,34 +700,28 @@ export class Renderer {
     const smoothedPower = curvedPower + smoothingFactor * (normalizedPower - curvedPower);
     const clampedPower = smoothedPower * maxPower;
     const projectileSpec = activeUnit.def.projectile;
-    const previewScale = projectileSpec?.previewScale ?? 1.2;
-    const previewDistance = clampedPower * previewScale;
-    const cappedPreviewDistance = projectileSpec
-      ? Math.min(projectileSpec.maxDistance, previewDistance)
-      : previewDistance;
-    const previewEnd = addVectors(dragOrigin, scale(launchDir, cappedPreviewDistance));
-
-    let tipDistance = cappedPreviewDistance;
-    let extensionEnd: Vector | null = null;
-    if (projectileSpec) {
-      const maxDistance = projectileSpec.maxDistance;
-      const remaining = Math.max(0, maxDistance - cappedPreviewDistance);
-      const requestedExtension = projectileSpec.previewExtension ?? 0;
-      const extensionLength = Math.min(requestedExtension, remaining);
-      if (extensionLength > 1) {
-        tipDistance += extensionLength;
-        extensionEnd = addVectors(previewEnd, scale(launchDir, extensionLength));
-      } else {
-        tipDistance = Math.min(tipDistance, maxDistance);
-      }
-    }
-    const aimTip = extensionEnd ?? previewEnd;
+    const movementDistance = Math.min(
+      this.estimateUnitTravelDistance(clampedPower),
+      this.computeBoundaryDistance(dragOrigin, launchDir, activeUnit.def.radius)
+    );
+    const movementEnd = addVectors(dragOrigin, scale(launchDir, movementDistance));
+    const projectileDistance = projectileSpec
+      ? Math.min(
+        projectileSpec.maxDistance,
+        this.computeBoundaryDistance(dragOrigin, launchDir, projectileSpec.radius)
+      )
+      : 0;
+    const projectileEnd = projectileSpec
+      ? addVectors(dragOrigin, scale(launchDir, projectileDistance))
+      : null;
+    const aimTip = movementEnd;
 
     const { ctx } = this;
     ctx.save();
 
-    const hasProjectile = Boolean(projectileSpec);
-    const projectileColor = projectileSpec?.color;
+    const projectileColor = projectileSpec
+      ? projectileSpec.teamColors?.[state.activeTeam] ?? projectileSpec.color
+      : undefined;
     const baseStroke = projectileColor
       ? this.replaceAlpha(projectileColor, 0.98)
       : state.activeTeam === 0
@@ -739,11 +733,6 @@ export class Renderer {
         ? 'rgba(191,219,254,0.75)'
         : 'rgba(252,211,77,0.75)';
     const accent = '#ffffff';
-
-    const longDistance = hasProjectile
-      ? this.computeAimGuideLength(dragOrigin, launchDir, tipDistance)
-      : tipDistance;
-    const longEnd = hasProjectile ? addVectors(dragOrigin, scale(launchDir, longDistance)) : aimTip;
 
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
@@ -757,13 +746,13 @@ export class Renderer {
     ctx.lineWidth = 12;
     ctx.beginPath();
     ctx.moveTo(dragOrigin.x, dragOrigin.y);
-    ctx.lineTo(previewEnd.x, previewEnd.y);
+    ctx.lineTo(movementEnd.x, movementEnd.y);
     ctx.stroke();
 
     ctx.globalAlpha = 1;
     ctx.shadowBlur = 22;
     ctx.shadowColor = glowColor;
-    const gradient = ctx.createLinearGradient(dragOrigin.x, dragOrigin.y, previewEnd.x, previewEnd.y);
+    const gradient = ctx.createLinearGradient(dragOrigin.x, dragOrigin.y, movementEnd.x, movementEnd.y);
     gradient.addColorStop(0, accent);
     gradient.addColorStop(0.5, baseStroke);
     gradient.addColorStop(1, this.replaceAlpha(baseStroke, 0.92));
@@ -771,32 +760,19 @@ export class Renderer {
     ctx.lineWidth = 6;
     ctx.beginPath();
     ctx.moveTo(dragOrigin.x, dragOrigin.y);
-    ctx.lineTo(previewEnd.x, previewEnd.y);
+    ctx.lineTo(movementEnd.x, movementEnd.y);
     ctx.stroke();
 
-    if (extensionEnd) {
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = glowColor;
-      ctx.lineWidth = 4.2;
-      ctx.strokeStyle = this.replaceAlpha(baseStroke, 0.85);
-      ctx.setLineDash([10, 8]);
-      ctx.beginPath();
-      ctx.moveTo(previewEnd.x, previewEnd.y);
-      ctx.lineTo(extensionEnd.x, extensionEnd.y);
-      ctx.stroke();
-    }
-
-    if (hasProjectile) {
-      const longStart = extensionEnd ?? previewEnd;
+    if (projectileEnd) {
       ctx.shadowBlur = 0;
       ctx.shadowColor = 'transparent';
-      ctx.globalAlpha = 0.5;
+      ctx.globalAlpha = 0.7;
       ctx.lineWidth = 3.2;
-      ctx.setLineDash([18, 14]);
-      ctx.strokeStyle = this.replaceAlpha(glowColor, 0.5);
+      ctx.setLineDash([14, 10]);
+      ctx.strokeStyle = this.replaceAlpha(baseStroke, 0.72);
       ctx.beginPath();
-      ctx.moveTo(longStart.x, longStart.y);
-      ctx.lineTo(longEnd.x, longEnd.y);
+      ctx.moveTo(dragOrigin.x, dragOrigin.y);
+      ctx.lineTo(projectileEnd.x, projectileEnd.y);
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
@@ -805,11 +781,6 @@ export class Renderer {
 
     const primaryTip = addVectors(aimTip, scale(launchDir, 14));
     this.drawArrowHead(primaryTip, launchDir, 14, baseStroke, 1, glowColor, 18);
-
-    if (hasProjectile) {
-      const ghostTip = addVectors(longEnd, scale(launchDir, 10));
-      this.drawArrowHead(ghostTip, launchDir, 10, this.replaceAlpha(glowColor, 0.75), 0.55);
-    }
 
     ctx.shadowBlur = 0;
     ctx.shadowColor = 'transparent';
@@ -848,32 +819,59 @@ export class Renderer {
     ctx.restore();
   }
 
-  private computeAimGuideLength(origin: Vector, direction: Vector, minimum: number): number {
-    const EPSILON = 1e-3;
-    const { width, height } = this.map;
-    const candidates: number[] = [];
+  private estimateUnitTravelDistance(power: number): number {
+    if (power <= 0) {
+      return 0;
+    }
+    const launchSpeed = power * GAME_CONSTANTS.dragPowerScale;
+    if (launchSpeed < GAME_CONSTANTS.minVelocity) {
+      return 0;
+    }
+    const damping = GAME_CONSTANTS.friction;
+    if (damping <= 0 || damping >= 1) {
+      return launchSpeed * GAME_CONSTANTS.timeStep;
+    }
+    const stopRatio = GAME_CONSTANTS.minVelocity / launchSpeed;
+    const stepsToStop = Math.max(1, Math.ceil(Math.log(stopRatio) / Math.log(damping)));
+    const geometricSum = (1 - Math.pow(damping, stepsToStop)) / (1 - damping);
+    return launchSpeed * GAME_CONSTANTS.timeStep * geometricSum;
+  }
 
-    if (Math.abs(direction.x) > EPSILON) {
-      const right = (width - origin.x) / direction.x;
-      const left = -origin.x / direction.x;
-      if (right > 0) candidates.push(right);
-      if (left > 0) candidates.push(left);
+  private computeBoundaryDistance(origin: Vector, direction: Vector, padding: number): number {
+    const EPSILON = 1e-6;
+    const minX = padding;
+    const maxX = this.map.width - padding;
+    const minY = padding;
+    const maxY = this.map.height - padding;
+    let tMin = 0;
+    let tMax = Number.POSITIVE_INFINITY;
+
+    if (Math.abs(direction.x) <= EPSILON) {
+      if (origin.x < minX || origin.x > maxX) {
+        return 0;
+      }
+    } else {
+      const tx1 = (minX - origin.x) / direction.x;
+      const tx2 = (maxX - origin.x) / direction.x;
+      tMin = Math.max(tMin, Math.min(tx1, tx2));
+      tMax = Math.min(tMax, Math.max(tx1, tx2));
     }
 
-    if (Math.abs(direction.y) > EPSILON) {
-      const bottom = (height - origin.y) / direction.y;
-      const top = -origin.y / direction.y;
-      if (bottom > 0) candidates.push(bottom);
-      if (top > 0) candidates.push(top);
+    if (Math.abs(direction.y) <= EPSILON) {
+      if (origin.y < minY || origin.y > maxY) {
+        return 0;
+      }
+    } else {
+      const ty1 = (minY - origin.y) / direction.y;
+      const ty2 = (maxY - origin.y) / direction.y;
+      tMin = Math.max(tMin, Math.min(ty1, ty2));
+      tMax = Math.min(tMax, Math.max(ty1, ty2));
     }
 
-    if (!candidates.length) {
-      return Math.max(minimum + 220, Math.hypot(width, height));
+    if (!Number.isFinite(tMax) || tMax <= 0 || tMin > tMax) {
+      return 0;
     }
-
-    const boundaryDistance = Math.min(...candidates);
-    const margin = Math.max(240, boundaryDistance * 0.2);
-    return Math.max(minimum + margin * 0.5, boundaryDistance + margin);
+    return Math.max(0, tMax);
   }
 
   private drawArrowHead(
