@@ -25,8 +25,13 @@ const zoomIndicator = document.getElementById('zoom-indicator') as HTMLSpanEleme
 const boardStage = document.getElementById('board-stage') as HTMLDivElement;
 const body = document.body as HTMLBodyElement;
 const fullscreenButton = document.getElementById('fullscreen-toggle') as HTMLButtonElement;
+const controlModeButtons = Array.from(
+  document.querySelectorAll<HTMLButtonElement>('[data-control-mode]')
+);
+const confirmShotButton = document.getElementById('confirm-shot-btn') as HTMLButtonElement;
 const ZOOM_STEP = 1.2;
 const DRAG_INPUT_MULTIPLIER = 1.35;
+type ShotControlMode = 'drag' | 'set';
 
 let currentMap = getMapById(DEFAULT_MAP_ID);
 let currentMode: GameMode = 'bot';
@@ -35,6 +40,7 @@ let onlineStatus: OnlineStatus = 'idle';
 let onlineStatusMessage: string | undefined;
 let onlineTeam: TeamId | null = null;
 let onlinePendingAction = false;
+let shotControlMode: ShotControlMode = 'drag';
 
 for (const map of MAPS) {
   const option = document.createElement('option');
@@ -108,6 +114,8 @@ let dragOrigin: Vector | null = null;
 let dragCurrent: Vector | null = null;
 let dragPointerId: number | null = null;
 let dragVector: Vector | null = null;
+let preparedActionVector: Vector | null = null;
+let preparedActionUnitId: string | null = null;
 let isPanning = false;
 let panPointerId: number | null = null;
 let panLast: { x: number; y: number } | null = null;
@@ -131,6 +139,16 @@ const engine = new GameEngine({
       updateZoomUi();
     }
     currentState = state;
+    const activeUnitId = getActiveUnit(state)?.id ?? null;
+    if (
+      !engine.canPlayerAct() ||
+      state.phase !== 'aim' ||
+      !preparedActionVector ||
+      !preparedActionUnitId ||
+      preparedActionUnitId !== activeUnitId
+    ) {
+      clearPreparedAction();
+    }
     updateUi(state);
     renderScene();
   },
@@ -141,6 +159,31 @@ const engine = new GameEngine({
 
 currentState = engine.getSnapshot();
 updateUi(currentState);
+const clearPreparedAction = () => {
+  preparedActionVector = null;
+  preparedActionUnitId = null;
+};
+
+const getPreviewLine = (): { origin: Vector; current: Vector } | null => {
+  if (isDragging && dragOrigin && dragCurrent) {
+    return { origin: dragOrigin, current: dragCurrent };
+  }
+  if (shotControlMode !== 'set' || !preparedActionVector || !preparedActionUnitId) {
+    return null;
+  }
+  const activeUnit = getActiveUnit(currentState);
+  if (!activeUnit || activeUnit.id !== preparedActionUnitId) {
+    return null;
+  }
+  return {
+    origin: { ...activeUnit.position },
+    current: {
+      x: activeUnit.position.x - preparedActionVector.x,
+      y: activeUnit.position.y - preparedActionVector.y,
+    },
+  };
+};
+
 const renderScene = () => {
   let localTeam: TeamId = 0;
   if (currentState.mode === 'online') {
@@ -148,10 +191,11 @@ const renderScene = () => {
   } else if (currentState.mode === 'hotseat') {
     localTeam = currentState.activeTeam;
   }
+  const previewLine = getPreviewLine();
   renderer.setPerspectiveTeam(localTeam);
   renderer.render(currentState, {
-    dragOrigin: isDragging ? dragOrigin : null,
-    dragCurrent: isDragging ? dragCurrent : null,
+    dragOrigin: previewLine?.origin ?? null,
+    dragCurrent: previewLine?.current ?? null,
   });
 };
 
@@ -384,6 +428,47 @@ fullscreenButton.addEventListener('click', () => {
   }
 });
 
+controlModeButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    const mode = button.dataset.controlMode as ShotControlMode | undefined;
+    if (!mode || mode === shotControlMode) {
+      return;
+    }
+    shotControlMode = mode;
+    clearPreparedAction();
+    setActiveControlModeButton(mode);
+    updateConfirmShotUi();
+    renderScene();
+  });
+});
+
+confirmShotButton.addEventListener('click', () => {
+  if (shotControlMode !== 'set' || !preparedActionVector) {
+    return;
+  }
+  if (currentMode === 'online') {
+    if (onlineStatus !== 'matched') {
+      return;
+    }
+    const client = onlineClient ?? ensureOnlineClient();
+    const team = onlineTeam ?? engine.getPlayerTeam();
+    const action = engine.createActionFromVector(preparedActionVector);
+    if (!action || !client) {
+      return;
+    }
+    onlinePendingAction = true;
+    clearPreparedAction();
+    updateConfirmShotUi();
+    renderScene();
+    client.submitAction(action, team);
+    return;
+  }
+  engine.beginPlayerAction(preparedActionVector);
+  clearPreparedAction();
+  updateConfirmShotUi();
+  renderScene();
+});
+
 const ensureOnlineClient = (): OnlineMatchClient => {
   if (onlineClient) {
     return onlineClient;
@@ -433,6 +518,7 @@ restartButton.addEventListener('click', () => {
   dragOrigin = null;
   dragCurrent = null;
   dragVector = null;
+  clearPreparedAction();
   if (dragPointerId !== null) {
     try {
       canvas.releasePointerCapture(dragPointerId);
@@ -466,6 +552,7 @@ mapSelect.addEventListener('change', () => {
   dragOrigin = null;
   dragCurrent = null;
   dragVector = null;
+  clearPreparedAction();
   if (dragPointerId !== null) {
     try {
       canvas.releasePointerCapture(dragPointerId);
@@ -503,6 +590,7 @@ modeButtons.forEach((button) => {
       engine.setOnlineReady(true);
     }
     currentMode = mode;
+    clearPreparedAction();
     setActiveModeButton(mode);
     if (mode === 'online') {
       ensureOnlineClient();
@@ -784,6 +872,7 @@ const endDrag = (event: PointerEvent, cancel = false) => {
   if (!isDragging || event.pointerId !== dragPointerId || !dragOrigin) return;
   updateDragPreview(event);
   const actionVector = dragVector ?? { x: 0, y: 0 };
+  const activeUnitId = getActiveUnit(currentState)?.id ?? null;
   isDragging = false;
   const pointerId = dragPointerId;
   dragPointerId = null;
@@ -799,6 +888,13 @@ const endDrag = (event: PointerEvent, cancel = false) => {
   }
   renderScene();
   if (cancel) {
+    return;
+  }
+  if (shotControlMode === 'set') {
+    preparedActionVector = actionVector;
+    preparedActionUnitId = activeUnitId;
+    updateConfirmShotUi();
+    renderScene();
     return;
   }
   if (currentMode === 'online') {
@@ -1015,7 +1111,9 @@ function updateUi(state: GameState): void {
       }
       const suffix = onlineStatusMessage && state.round === 1 ? ` ${onlineStatusMessage}` : '';
       return state.activeTeam === localTeam
-        ? `Drag your highlighted unit away from where you want it to travel, then release.${suffix}`
+        ? shotControlMode === 'set'
+          ? `Set + Confirm mode: drag to set aim, release, then tap "Confirm Shot".${suffix}`
+          : `Drag your highlighted unit away from where you want it to travel, then release.${suffix}`
         : 'Opponent is acting — watch the field.';
     }
     if (state.winner !== null) {
@@ -1029,17 +1127,24 @@ function updateUi(state: GameState): void {
     }
     if (state.mode === 'hotseat') {
       return state.activeTeam === 0
-        ? 'Team One: drag the highlighted unit opposite your desired path.'
-        : 'Team Two: drag the highlighted unit opposite your desired path.';
+        ? shotControlMode === 'set'
+          ? 'Team One: drag to set aim, then tap "Confirm Shot".'
+          : 'Team One: drag the highlighted unit opposite your desired path.'
+        : shotControlMode === 'set'
+          ? 'Team Two: drag to set aim, then tap "Confirm Shot".'
+          : 'Team Two: drag the highlighted unit opposite your desired path.';
     }
     return state.activeTeam === 0
-      ? 'Drag your highlighted unit away from where you want it to travel, then release.'
+      ? shotControlMode === 'set'
+        ? 'Set + Confirm mode: drag to set aim, then tap "Confirm Shot".'
+        : 'Drag your highlighted unit away from where you want it to travel, then release.'
       : 'Bot is acting — watch the field.';
   })();
 
   const mapMeta = getMapById(state.mapId);
   const mapDetails = mapMeta.description ? ` • ${mapMeta.name}: ${mapMeta.description}` : '';
   hintText.textContent = `${baseHint}${mapDetails}`;
+  updateConfirmShotUi();
 }
 
 function updateUnitList(container: HTMLUListElement, state: GameState, team: TeamId, activeId: string | null) {
@@ -1100,4 +1205,32 @@ function setActiveModeButton(mode: GameMode): void {
   });
 }
 
+function setActiveControlModeButton(mode: ShotControlMode): void {
+  controlModeButtons.forEach((button) => {
+    if (button.dataset.controlMode === mode) {
+      button.classList.add('active');
+    } else {
+      button.classList.remove('active');
+    }
+  });
+}
+
+function updateConfirmShotUi(): void {
+  if (shotControlMode !== 'set') {
+    confirmShotButton.disabled = true;
+    confirmShotButton.hidden = true;
+    return;
+  }
+  confirmShotButton.hidden = false;
+  const canUsePreparedShot =
+    Boolean(preparedActionVector) &&
+    engine.canPlayerAct() &&
+    currentState.phase === 'aim' &&
+    (currentMode !== 'online' || onlineStatus === 'matched') &&
+    !onlinePendingAction;
+  confirmShotButton.disabled = !canUsePreparedShot;
+}
+
 setActiveModeButton(currentMode);
+setActiveControlModeButton(shotControlMode);
+updateConfirmShotUi();
