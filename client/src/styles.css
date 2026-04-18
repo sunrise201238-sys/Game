@@ -1,6 +1,12 @@
 :root {
   color-scheme: dark;
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family:
+    'Inter',
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
   background: #0b132b;
   color: #f3f5fa;
 }
@@ -74,7 +80,10 @@ header h1 {
   font-weight: 600;
   letter-spacing: 0.05em;
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .mode-toggle button.active,
@@ -112,7 +121,10 @@ header h1 {
   font-weight: 600;
   letter-spacing: 0.02em;
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .control-mode button.active,
@@ -143,7 +155,9 @@ header h1 {
   cursor: pointer;
   position: relative;
   min-width: 180px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .map-picker select:hover,
@@ -162,7 +176,9 @@ header button {
   font-weight: 600;
   cursor: pointer;
   box-shadow: 0 8px 20px rgba(83, 225, 255, 0.2);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 header button:hover {
@@ -240,6 +256,55 @@ main > * {
   width: 100%;
   height: 100%;
   touch-action: none;
+}
+
+.set-shot-controls {
+  position: absolute;
+  display: flex;
+  gap: 0.7rem;
+  z-index: 6;
+  pointer-events: auto;
+  transform: translate(-50%, -100%);
+  padding: 0.55rem;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(5, 11, 22, 0.78);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(8px);
+}
+
+.set-shot-lever {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 4rem;
+}
+
+.set-shot-lever label {
+  font-size: 0.7rem;
+  opacity: 0.8;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.set-shot-lever input[type='range'] {
+  writing-mode: bt-lr;
+  -webkit-appearance: slider-vertical;
+  appearance: slider-vertical;
+  width: 1.2rem;
+  height: 5.8rem;
+  accent-color: #53e1ff;
+}
+
+.set-shot-lever span {
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+body.board-fullscreen-active .set-shot-controls {
+  border-color: rgba(255, 255, 255, 0.26);
+  background: rgba(5, 11, 22, 0.84);
 }
 
 #board-stage:fullscreen,
@@ -360,7 +425,11 @@ body.board-fullscreen-active #confirm-shot-btn:focus-visible {
   letter-spacing: 0.03em;
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(83, 225, 255, 0.2);
-  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
 }
 
 #fullscreen-toggle:hover,
@@ -392,7 +461,11 @@ body.board-fullscreen-active #confirm-shot-btn:focus-visible {
   letter-spacing: 0.03em;
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(83, 225, 255, 0.18);
-  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
 }
 
 #confirm-shot-btn:hover,
@@ -429,7 +502,9 @@ body.board-fullscreen-active #confirm-shot-btn:focus-visible {
   letter-spacing: 0.03em;
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(83, 225, 255, 0.25);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .zoom-controls button {
@@ -529,7 +604,9 @@ body.board-fullscreen-active #confirm-shot-btn:focus-visible {
   flex-direction: column;
   gap: 0.3rem;
   font-size: 0.88rem;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .team-card li.team-0 {
