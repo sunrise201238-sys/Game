@@ -19,6 +19,10 @@
           <label for="map-select">Map</label>
           <select id="map-select" aria-label="Choose battlefield"></select>
         </div>
+        <div class="control-mode" role="group" aria-label="Shot control mode">
+          <button type="button" data-control-mode="drag">Drag to Shoot</button>
+          <button type="button" data-control-mode="set">Set + Confirm</button>
+        </div>
         <button id="restart-btn" type="button">Start New Game</button>
       </header>
       <main>
@@ -40,8 +44,19 @@
               <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
               <button id="zoom-reset" type="button" aria-label="Reset zoom">Reset</button>
             </div>
+            <button id="confirm-shot-btn" type="button" disabled>Confirm Shot</button>
             <button id="fullscreen-toggle" type="button" aria-label="Enter fullscreen">Fullscreen</button>
           </div>
+          <section id="set-aim-controls" aria-label="Set shot direction and power">
+            <label class="aim-control">
+              <span>Direction <strong id="direction-value">0°</strong></span>
+              <input id="direction-slider" type="range" min="0" max="359" step="1" value="0" />
+            </label>
+            <label class="aim-control">
+              <span>Power <strong id="power-value">60%</strong></span>
+              <input id="power-slider" type="range" min="0" max="100" step="1" value="60" />
+            </label>
+          </section>
           <div id="board-stage">
             <canvas id="gameCanvas" width="960" height="540"></canvas>
           </div>

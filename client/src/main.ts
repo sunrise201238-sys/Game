@@ -25,8 +25,18 @@ const zoomIndicator = document.getElementById('zoom-indicator') as HTMLSpanEleme
 const boardStage = document.getElementById('board-stage') as HTMLDivElement;
 const body = document.body as HTMLBodyElement;
 const fullscreenButton = document.getElementById('fullscreen-toggle') as HTMLButtonElement;
+const controlModeButtons = Array.from(
+  document.querySelectorAll<HTMLButtonElement>('[data-control-mode]')
+);
+const confirmShotButton = document.getElementById('confirm-shot-btn') as HTMLButtonElement;
+const setAimControls = document.getElementById('set-aim-controls') as HTMLElement;
+const directionSlider = document.getElementById('direction-slider') as HTMLInputElement;
+const powerSlider = document.getElementById('power-slider') as HTMLInputElement;
+const directionValue = document.getElementById('direction-value') as HTMLSpanElement;
+const powerValue = document.getElementById('power-value') as HTMLSpanElement;
 const ZOOM_STEP = 1.2;
 const DRAG_INPUT_MULTIPLIER = 1.35;
+type ShotControlMode = 'drag' | 'set';
 
 let currentMap = getMapById(DEFAULT_MAP_ID);
 let currentMode: GameMode = 'bot';
@@ -35,6 +45,9 @@ let onlineStatus: OnlineStatus = 'idle';
 let onlineStatusMessage: string | undefined;
 let onlineTeam: TeamId | null = null;
 let onlinePendingAction = false;
+let shotControlMode: ShotControlMode = 'drag';
+let setAimDirectionDeg = Number(directionSlider.value) || 0;
+let setAimPowerPercent = Number(powerSlider.value) || 60;
 
 for (const map of MAPS) {
   const option = document.createElement('option');
@@ -108,6 +121,8 @@ let dragOrigin: Vector | null = null;
 let dragCurrent: Vector | null = null;
 let dragPointerId: number | null = null;
 let dragVector: Vector | null = null;
+let preparedActionVector: Vector | null = null;
+let preparedActionUnitId: string | null = null;
 let isPanning = false;
 let panPointerId: number | null = null;
 let panLast: { x: number; y: number } | null = null;
@@ -131,6 +146,11 @@ const engine = new GameEngine({
       updateZoomUi();
     }
     currentState = state;
+    if (shotControlMode === 'set') {
+      syncPreparedShotFromSliders();
+    } else {
+      clearPreparedAction();
+    }
     updateUi(state);
     renderScene();
   },
@@ -141,6 +161,69 @@ const engine = new GameEngine({
 
 currentState = engine.getSnapshot();
 updateUi(currentState);
+const clearPreparedAction = () => {
+  preparedActionVector = null;
+  preparedActionUnitId = null;
+};
+
+const clampPercent = (value: number): number => Math.min(100, Math.max(0, value));
+
+const normalizeDegrees = (value: number): number => {
+  const normalized = value % 360;
+  return normalized < 0 ? normalized + 360 : normalized;
+};
+
+const formatDirection = (value: number): string => `${Math.round(normalizeDegrees(value))}°`;
+const formatPower = (value: number): string => `${Math.round(clampPercent(value))}%`;
+
+const createVectorFromSetAim = (unitMaxPower: number): Vector => {
+  const radians = (normalizeDegrees(setAimDirectionDeg) * Math.PI) / 180;
+  const powerMagnitude = clampPercent(setAimPowerPercent) / 100 * unitMaxPower;
+  return {
+    x: Math.cos(radians) * powerMagnitude,
+    y: Math.sin(radians) * powerMagnitude,
+  };
+};
+
+const syncPreparedShotFromSliders = () => {
+  if (shotControlMode !== 'set') {
+    clearPreparedAction();
+    return;
+  }
+  const activeUnit = getActiveUnit(currentState);
+  if (!activeUnit || !engine.canPlayerAct() || currentState.phase !== 'aim') {
+    clearPreparedAction();
+    return;
+  }
+  preparedActionVector = createVectorFromSetAim(activeUnit.def.maxPower);
+  preparedActionUnitId = activeUnit.id;
+};
+
+const updateSetAimReadouts = () => {
+  directionValue.textContent = formatDirection(setAimDirectionDeg);
+  powerValue.textContent = formatPower(setAimPowerPercent);
+};
+
+const getPreviewLine = (): { origin: Vector; current: Vector } | null => {
+  if (isDragging && dragOrigin && dragCurrent) {
+    return { origin: dragOrigin, current: dragCurrent };
+  }
+  if (shotControlMode !== 'set' || !preparedActionVector || !preparedActionUnitId) {
+    return null;
+  }
+  const activeUnit = getActiveUnit(currentState);
+  if (!activeUnit || activeUnit.id !== preparedActionUnitId) {
+    return null;
+  }
+  return {
+    origin: { ...activeUnit.position },
+    current: {
+      x: activeUnit.position.x - preparedActionVector.x,
+      y: activeUnit.position.y - preparedActionVector.y,
+    },
+  };
+};
+
 const renderScene = () => {
   let localTeam: TeamId = 0;
   if (currentState.mode === 'online') {
@@ -148,10 +231,11 @@ const renderScene = () => {
   } else if (currentState.mode === 'hotseat') {
     localTeam = currentState.activeTeam;
   }
+  const previewLine = getPreviewLine();
   renderer.setPerspectiveTeam(localTeam);
   renderer.render(currentState, {
-    dragOrigin: isDragging ? dragOrigin : null,
-    dragCurrent: isDragging ? dragCurrent : null,
+    dragOrigin: previewLine?.origin ?? null,
+    dragCurrent: previewLine?.current ?? null,
   });
 };
 
@@ -384,6 +468,67 @@ fullscreenButton.addEventListener('click', () => {
   }
 });
 
+controlModeButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    const mode = button.dataset.controlMode as ShotControlMode | undefined;
+    if (!mode || mode === shotControlMode) {
+      return;
+    }
+    shotControlMode = mode;
+    if (shotControlMode === 'set') {
+      syncPreparedShotFromSliders();
+    } else {
+      clearPreparedAction();
+    }
+    setActiveControlModeButton(mode);
+    updateConfirmShotUi();
+    renderScene();
+  });
+});
+
+directionSlider.addEventListener('input', () => {
+  setAimDirectionDeg = Number(directionSlider.value) || 0;
+  updateSetAimReadouts();
+  syncPreparedShotFromSliders();
+  updateConfirmShotUi();
+  renderScene();
+});
+
+powerSlider.addEventListener('input', () => {
+  setAimPowerPercent = Number(powerSlider.value) || 0;
+  updateSetAimReadouts();
+  syncPreparedShotFromSliders();
+  updateConfirmShotUi();
+  renderScene();
+});
+
+confirmShotButton.addEventListener('click', () => {
+  if (shotControlMode !== 'set' || !preparedActionVector) {
+    return;
+  }
+  if (currentMode === 'online') {
+    if (onlineStatus !== 'matched') {
+      return;
+    }
+    const client = onlineClient ?? ensureOnlineClient();
+    const team = onlineTeam ?? engine.getPlayerTeam();
+    const action = engine.createActionFromVector(preparedActionVector);
+    if (!action || !client) {
+      return;
+    }
+    onlinePendingAction = true;
+    clearPreparedAction();
+    updateConfirmShotUi();
+    renderScene();
+    client.submitAction(action, team);
+    return;
+  }
+  engine.beginPlayerAction(preparedActionVector);
+  clearPreparedAction();
+  updateConfirmShotUi();
+  renderScene();
+});
+
 const ensureOnlineClient = (): OnlineMatchClient => {
   if (onlineClient) {
     return onlineClient;
@@ -433,6 +578,7 @@ restartButton.addEventListener('click', () => {
   dragOrigin = null;
   dragCurrent = null;
   dragVector = null;
+  clearPreparedAction();
   if (dragPointerId !== null) {
     try {
       canvas.releasePointerCapture(dragPointerId);
@@ -466,6 +612,7 @@ mapSelect.addEventListener('change', () => {
   dragOrigin = null;
   dragCurrent = null;
   dragVector = null;
+  clearPreparedAction();
   if (dragPointerId !== null) {
     try {
       canvas.releasePointerCapture(dragPointerId);
@@ -503,6 +650,7 @@ modeButtons.forEach((button) => {
       engine.setOnlineReady(true);
     }
     currentMode = mode;
+    clearPreparedAction();
     setActiveModeButton(mode);
     if (mode === 'online') {
       ensureOnlineClient();
@@ -745,6 +893,13 @@ canvas.addEventListener('pointerdown', (event) => {
   if (canAct && activeUnit) {
     const distanceToUnit = Math.hypot(pointer.x - activeUnit.position.x, pointer.y - activeUnit.position.y);
     if (distanceToUnit <= activeUnit.def.radius + 12) {
+      if (shotControlMode === 'set') {
+        event.preventDefault();
+        syncPreparedShotFromSliders();
+        updateConfirmShotUi();
+        renderScene();
+        return;
+      }
       isDragging = true;
       dragOrigin = { ...activeUnit.position };
       dragCurrent = { ...dragOrigin };
@@ -784,6 +939,7 @@ const endDrag = (event: PointerEvent, cancel = false) => {
   if (!isDragging || event.pointerId !== dragPointerId || !dragOrigin) return;
   updateDragPreview(event);
   const actionVector = dragVector ?? { x: 0, y: 0 };
+  const activeUnitId = getActiveUnit(currentState)?.id ?? null;
   isDragging = false;
   const pointerId = dragPointerId;
   dragPointerId = null;
@@ -799,6 +955,13 @@ const endDrag = (event: PointerEvent, cancel = false) => {
   }
   renderScene();
   if (cancel) {
+    return;
+  }
+  if (shotControlMode === 'set') {
+    preparedActionVector = actionVector;
+    preparedActionUnitId = activeUnitId;
+    updateConfirmShotUi();
+    renderScene();
     return;
   }
   if (currentMode === 'online') {
@@ -1015,7 +1178,9 @@ function updateUi(state: GameState): void {
       }
       const suffix = onlineStatusMessage && state.round === 1 ? ` ${onlineStatusMessage}` : '';
       return state.activeTeam === localTeam
-        ? `Drag your highlighted unit away from where you want it to travel, then release.${suffix}`
+        ? shotControlMode === 'set'
+          ? `Set + Confirm mode: use Direction and Power sliders, then tap "Confirm Shot".${suffix}`
+          : `Drag your highlighted unit away from where you want it to travel, then release.${suffix}`
         : 'Opponent is acting — watch the field.';
     }
     if (state.winner !== null) {
@@ -1029,17 +1194,24 @@ function updateUi(state: GameState): void {
     }
     if (state.mode === 'hotseat') {
       return state.activeTeam === 0
-        ? 'Team One: drag the highlighted unit opposite your desired path.'
-        : 'Team Two: drag the highlighted unit opposite your desired path.';
+        ? shotControlMode === 'set'
+          ? 'Team One: set Direction + Power sliders, then tap "Confirm Shot".'
+          : 'Team One: drag the highlighted unit opposite your desired path.'
+        : shotControlMode === 'set'
+          ? 'Team Two: set Direction + Power sliders, then tap "Confirm Shot".'
+          : 'Team Two: drag the highlighted unit opposite your desired path.';
     }
     return state.activeTeam === 0
-      ? 'Drag your highlighted unit away from where you want it to travel, then release.'
+      ? shotControlMode === 'set'
+        ? 'Set + Confirm mode: set Direction + Power sliders, then tap "Confirm Shot".'
+        : 'Drag your highlighted unit away from where you want it to travel, then release.'
       : 'Bot is acting — watch the field.';
   })();
 
   const mapMeta = getMapById(state.mapId);
   const mapDetails = mapMeta.description ? ` • ${mapMeta.name}: ${mapMeta.description}` : '';
   hintText.textContent = `${baseHint}${mapDetails}`;
+  updateConfirmShotUi();
 }
 
 function updateUnitList(container: HTMLUListElement, state: GameState, team: TeamId, activeId: string | null) {
@@ -1100,4 +1272,40 @@ function setActiveModeButton(mode: GameMode): void {
   });
 }
 
+function setActiveControlModeButton(mode: ShotControlMode): void {
+  controlModeButtons.forEach((button) => {
+    if (button.dataset.controlMode === mode) {
+      button.classList.add('active');
+    } else {
+      button.classList.remove('active');
+    }
+  });
+}
+
+function updateConfirmShotUi(): void {
+  if (shotControlMode !== 'set') {
+    confirmShotButton.disabled = true;
+    confirmShotButton.hidden = true;
+    setAimControls.hidden = true;
+    return;
+  }
+  confirmShotButton.hidden = false;
+  const canConfigureShot =
+    engine.canPlayerAct() &&
+    currentState.phase === 'aim' &&
+    (currentMode !== 'online' || onlineStatus === 'matched') &&
+    !onlinePendingAction;
+  setAimControls.hidden = !canConfigureShot;
+  directionSlider.disabled = !canConfigureShot;
+  powerSlider.disabled = !canConfigureShot;
+  const canUsePreparedShot =
+    Boolean(preparedActionVector) &&
+    canConfigureShot;
+  confirmShotButton.disabled = !canUsePreparedShot;
+}
+
 setActiveModeButton(currentMode);
+setActiveControlModeButton(shotControlMode);
+updateSetAimReadouts();
+syncPreparedShotFromSliders();
+updateConfirmShotUi();
