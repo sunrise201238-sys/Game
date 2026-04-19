@@ -35,6 +35,10 @@ const leverPowerValue = document.getElementById('lever-power-value') as HTMLSpan
 const leverFireButton = document.getElementById('lever-fire-btn') as HTMLButtonElement;
 const ZOOM_STEP = 1.2;
 const DRAG_INPUT_MULTIPLIER = 1.35;
+const LEVER_DIRECTION_OFFSET_BY_TEAM: Record<TeamId, number> = {
+  0: 270,
+  1: 90,
+};
 type FireControlMode = 'drag' | 'lever';
 
 let currentMap = getMapById(DEFAULT_MAP_ID);
@@ -125,6 +129,7 @@ let isPanning = false;
 let panPointerId: number | null = null;
 let panLast: { x: number; y: number } | null = null;
 let panKeyActive = false;
+let lastLeverDefaultKey: string | null = null;
 type PointerPosition = { clientX: number; clientY: number };
 const activeTouchPointers = new Map<number, PointerPosition>();
 interface PinchState {
@@ -358,6 +363,16 @@ const applyZoomFactor = (factor: number, anchor?: Vector) => {
 
 const getLeverDirectionDegrees = (): number => {
   const parsed = Number.parseFloat(leverDirectionInput.value);
+  const normalizedInput = Number.isFinite(parsed)
+    ? ((Math.round(parsed) % 360) + 360) % 360
+    : 0;
+  const activeTeam = currentState?.activeTeam ?? 0;
+  const teamOffset = LEVER_DIRECTION_OFFSET_BY_TEAM[activeTeam] ?? 0;
+  return (normalizedInput + teamOffset) % 360;
+};
+
+const getLeverDirectionInputDegrees = (): number => {
+  const parsed = Number.parseFloat(leverDirectionInput.value);
   if (!Number.isFinite(parsed)) {
     return 0;
   }
@@ -406,13 +421,26 @@ const getLeverPreviewLine = (): { origin: Vector; current: Vector } | null => {
   };
 };
 
+const applyLeverDefaultDirectionForTurn = (state: GameState): void => {
+  if (state.phase !== 'aim') {
+    lastLeverDefaultKey = null;
+    return;
+  }
+  const turnKey = `${state.mode}:${state.round}:${state.activeTeam}:${state.phase}`;
+  if (turnKey === lastLeverDefaultKey) {
+    return;
+  }
+  leverDirectionInput.value = '0';
+  lastLeverDefaultKey = turnKey;
+};
+
 function updateFireControlUi(): void {
   const leverMode = fireControlMode === 'lever';
   boardStage.classList.toggle('board-stage--lever-mode', leverMode);
   leverPanel.hidden = !leverMode;
   fireModeToggle.textContent = leverMode ? 'Mode: Lever' : 'Mode: Drag';
   fireModeToggle.setAttribute('aria-pressed', leverMode ? 'true' : 'false');
-  const direction = getLeverDirectionDegrees();
+  const direction = getLeverDirectionInputDegrees();
   leverDirectionValue.textContent = `${direction}°`;
   const powerPercent = Math.round(getLeverPowerRatio() * 100);
   leverPowerValue.textContent = `${powerPercent}%`;
@@ -1043,6 +1071,7 @@ function toWorldPointFromClient(clientX: number, clientY: number): Vector {
 }
 
 function updateUi(state: GameState): void {
+  applyLeverDefaultDirectionForTurn(state);
   const activeUnit = getActiveUnit(state);
   roundLabel.textContent = `Round ${state.round}`;
   setActiveModeButton(state.mode);
