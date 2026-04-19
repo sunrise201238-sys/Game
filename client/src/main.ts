@@ -48,6 +48,10 @@ let onlineStatus: OnlineStatus = 'idle';
 let onlineStatusMessage: string | undefined;
 let onlineTeam: TeamId | null = null;
 let onlinePendingAction = false;
+let onlineReadyTurn = -1;
+let lastReportedTurn = -1;
+let onlineAwaitingSyncApply = false;
+let pendingOnlineStateSync: { turn: number; state: GameState } | null = null;
 let fireControlMode: FireControlMode = 'drag';
 
 for (const map of MAPS) {
@@ -141,6 +145,9 @@ interface PinchState {
 let pinchState: PinchState | null = null;
 const engine = new GameEngine({
   onState: (state) => {
+    if (applyPendingOnlineStateSyncIfReady(state)) {
+      return;
+    }
     if (state.mapId !== currentMap.id) {
       currentMap = getMapById(state.mapId);
       renderer.setMap(currentMap);
@@ -149,6 +156,8 @@ const engine = new GameEngine({
       updateZoomUi();
     }
     currentState = state;
+    maybeReportOnlineTurnCompletion(state);
+    refreshOnlineReadyState();
     updateUi(state);
     renderScene();
   },
@@ -171,6 +180,77 @@ const renderScene = () => {
     dragOrigin: isDragging ? dragOrigin : leverPreview?.origin ?? null,
     dragCurrent: isDragging ? dragCurrent : leverPreview?.current ?? null,
   });
+};
+
+const applyPendingOnlineStateSyncIfReady = (state: GameState): boolean => {
+  if (!pendingOnlineStateSync) {
+    return false;
+  }
+  if (state.mode !== 'online') {
+    pendingOnlineStateSync = null;
+    onlineAwaitingSyncApply = false;
+    return false;
+  }
+  if (state.phase !== 'aim') {
+    return false;
+  }
+  const payload = pendingOnlineStateSync;
+  if (engine.getTurnCounter() > payload.turn) {
+    pendingOnlineStateSync = null;
+    onlineAwaitingSyncApply = false;
+    return false;
+  }
+  pendingOnlineStateSync = null;
+  onlineAwaitingSyncApply = false;
+  engine.syncOnlineState(payload.state, payload.turn);
+  return true;
+};
+
+const hashOnlineState = (state: GameState): string => {
+  const units = [...state.units]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((unit) => ({
+      id: unit.id,
+      hp: unit.hp,
+      alive: unit.alive,
+      x: Math.round(unit.position.x * 1000) / 1000,
+      y: Math.round(unit.position.y * 1000) / 1000,
+    }));
+  return JSON.stringify({
+    activeTeam: state.activeTeam,
+    winner: state.winner,
+    units,
+  });
+};
+
+const serializeOnlineState = (state: GameState): string => JSON.stringify(state);
+
+const maybeReportOnlineTurnCompletion = (state: GameState): void => {
+  if (state.mode !== 'online' || onlineStatus !== 'matched' || !onlineClient || onlineTeam === null) {
+    return;
+  }
+  if (state.winner !== null || state.phase !== 'aim') {
+    return;
+  }
+  const turn = engine.getTurnCounter();
+  if (turn <= 0 || turn <= lastReportedTurn) {
+    return;
+  }
+  lastReportedTurn = turn;
+  onlineClient.reportTurnComplete(onlineTeam, turn, hashOnlineState(state), serializeOnlineState(state));
+};
+
+const refreshOnlineReadyState = (): void => {
+  if (currentMode !== 'online') {
+    engine.setOnlineReady(true);
+    return;
+  }
+  const ready = onlineStatus === 'matched' &&
+    onlineTeam !== null &&
+    onlineReadyTurn === engine.getTurnCounter() &&
+    !onlineAwaitingSyncApply &&
+    !onlinePendingAction;
+  engine.setOnlineReady(ready);
 };
 
 const updateZoomUi = () => {
@@ -474,6 +554,7 @@ const submitLeverAction = () => {
       return;
     }
     onlinePendingAction = true;
+    refreshOnlineReadyState();
     client.submitAction(action, team);
     updateFireControlUi();
     return;
@@ -534,15 +615,23 @@ const ensureOnlineClient = (): OnlineMatchClient => {
       onlineStatusMessage = message;
       if (status !== 'matched') {
         onlinePendingAction = false;
-        engine.setOnlineReady(false);
+        onlineReadyTurn = -1;
+        lastReportedTurn = -1;
+        onlineAwaitingSyncApply = false;
+        pendingOnlineStateSync = null;
+        refreshOnlineReadyState();
       } else {
-        engine.setOnlineReady(true);
+        refreshOnlineReadyState();
       }
       updateUi(currentState);
     },
     onMatchFound: ({ matchId, team, mapId }) => {
       onlineTeam = team;
       onlinePendingAction = false;
+      onlineReadyTurn = -1;
+      lastReportedTurn = -1;
+      onlineAwaitingSyncApply = false;
+      pendingOnlineStateSync = null;
       const map = getMapById(mapId);
       if (currentMap.id !== map.id) {
         currentMap = map;
@@ -554,14 +643,48 @@ const ensureOnlineClient = (): OnlineMatchClient => {
       onlineStatusMessage = team === 0 ? 'You go first.' : 'Opponent goes first.';
       engine.setPlayerTeam(team);
       engine.startNewGame(currentMap, 'online', team);
+      refreshOnlineReadyState();
     },
     onActionReceived: (action, team) => {
       onlinePendingAction = false;
       engine.beginNetworkAction(action, team);
+      refreshOnlineReadyState();
+    },
+    onStateSync: (turn, stateJson) => {
+      try {
+        const parsed = JSON.parse(stateJson) as GameState;
+        if (currentState.mode === 'online' && currentState.phase === 'animating') {
+          pendingOnlineStateSync = { turn, state: parsed };
+          onlineAwaitingSyncApply = true;
+          onlineStatusMessage = 'Syncing turn…';
+        } else {
+          onlineAwaitingSyncApply = false;
+          pendingOnlineStateSync = null;
+          engine.syncOnlineState(parsed, turn);
+        }
+      } catch (error) {
+        onlineStatusMessage = 'Failed to sync match state';
+      }
+      refreshOnlineReadyState();
+      updateUi(currentState);
+    },
+    onTurnReady: (turn) => {
+      onlineReadyTurn = Math.max(onlineReadyTurn, turn);
+      refreshOnlineReadyState();
+      updateUi(currentState);
+    },
+    onSyncError: (message) => {
+      onlineStatusMessage = message;
+      onlinePendingAction = false;
+      refreshOnlineReadyState();
+      updateUi(currentState);
     },
     onOpponentLeft: () => {
       onlinePendingAction = false;
-      engine.setOnlineReady(false);
+      onlineReadyTurn = -1;
+      onlineAwaitingSyncApply = false;
+      pendingOnlineStateSync = null;
+      refreshOnlineReadyState();
       updateUi(currentState);
     },
   });
@@ -591,7 +714,11 @@ restartButton.addEventListener('click', () => {
       if (onlineStatus === 'matched') {
         client.leaveMatch();
       }
-      engine.setOnlineReady(false);
+      onlineReadyTurn = -1;
+      lastReportedTurn = -1;
+      onlineAwaitingSyncApply = false;
+      pendingOnlineStateSync = null;
+      refreshOnlineReadyState();
       client.queueForMatch(currentMap.id);
     }
     return;
@@ -625,7 +752,11 @@ mapSelect.addEventListener('change', () => {
     } else if (onlineStatus === 'queued' || onlineStatus === 'connecting') {
       client.cancelQueue();
     }
-    engine.setOnlineReady(false);
+    onlineReadyTurn = -1;
+    lastReportedTurn = -1;
+    onlineAwaitingSyncApply = false;
+    pendingOnlineStateSync = null;
+    refreshOnlineReadyState();
     return;
   }
   engine.startNewGame(currentMap, currentMode);
@@ -642,13 +773,21 @@ modeButtons.forEach((button) => {
       onlineStatusMessage = undefined;
       onlineTeam = null;
       onlinePendingAction = false;
-      engine.setOnlineReady(true);
+      onlineReadyTurn = -1;
+      lastReportedTurn = -1;
+      onlineAwaitingSyncApply = false;
+      pendingOnlineStateSync = null;
+      refreshOnlineReadyState();
     }
     currentMode = mode;
     setActiveModeButton(mode);
     if (mode === 'online') {
       ensureOnlineClient();
-      engine.setOnlineReady(false);
+      onlineReadyTurn = -1;
+      lastReportedTurn = -1;
+      onlineAwaitingSyncApply = false;
+      pendingOnlineStateSync = null;
+      refreshOnlineReadyState();
       engine.startNewGame(currentMap, currentMode);
     } else {
       engine.startNewGame(currentMap, currentMode);
@@ -960,6 +1099,7 @@ const endDrag = (event: PointerEvent, cancel = false) => {
       return;
     }
     onlinePendingAction = true;
+    refreshOnlineReadyState();
     client.submitAction(action, team);
     updateFireControlUi();
     return;
@@ -1116,7 +1256,11 @@ function updateUi(state: GameState): void {
           break;
       }
     } else if (state.phase === 'aim') {
-      phaseText = state.activeTeam === localTeam ? 'Your turn' : 'Opponent turn';
+      if (!engine.canPlayerAct() && state.activeTeam === localTeam) {
+        phaseText = 'Syncing positions…';
+      } else {
+        phaseText = state.activeTeam === localTeam ? 'Your turn' : 'Opponent turn';
+      }
     } else if (state.phase === 'animating') {
       phaseText = 'Resolving';
     }
@@ -1188,6 +1332,9 @@ function updateUi(state: GameState): void {
       }
       if (state.phase === 'animating') {
         return 'Resolving actions…';
+      }
+      if (state.phase === 'aim' && state.activeTeam === localTeam && !engine.canPlayerAct()) {
+        return 'Syncing both devices before the next move…';
       }
       const suffix = onlineStatusMessage && state.round === 1 ? ` ${onlineStatusMessage}` : '';
       return state.activeTeam === localTeam

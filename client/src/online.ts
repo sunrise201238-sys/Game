@@ -16,6 +16,9 @@ interface OnlineMatchEvents {
   onStatusChange(status: OnlineStatus, message?: string): void;
   onMatchFound(info: MatchInfo): void;
   onActionReceived(action: DragAction, team: TeamId): void;
+  onStateSync(turn: number, stateJson: string): void;
+  onTurnReady(turn: number): void;
+  onSyncError(message: string): void;
   onOpponentLeft(): void;
 }
 
@@ -32,6 +35,10 @@ export class OnlineMatchClient {
   private matchId: string | null = null;
 
   private messageQueue: ClientToServerMessage[] = [];
+
+  private clearQueuedMessages(): void {
+    this.messageQueue = [];
+  }
 
   private manualClose = false;
 
@@ -131,6 +138,7 @@ export class OnlineMatchClient {
     this.socket.addEventListener('close', () => {
       this.socket = null;
       this.matchId = null;
+      this.clearQueuedMessages();
       this.clearReconnectTimer();
       if (this.manualClose) {
         this.setStatus('idle');
@@ -146,6 +154,7 @@ export class OnlineMatchClient {
     });
 
     this.socket.addEventListener('error', () => {
+      this.clearQueuedMessages();
       if (this.status !== 'error') {
         this.setStatus('error', 'Connection error');
       }
@@ -204,12 +213,14 @@ export class OnlineMatchClient {
         this.setStatus('queued');
         break;
       case 'queue-cancelled':
+        this.clearQueuedMessages();
         this.shouldAutoQueue = false;
         this.desiredQueueMapId = null;
         this.pendingReconnectQueue = false;
         this.setStatus('idle');
         break;
       case 'match-found':
+        this.clearQueuedMessages();
         this.matchId = message.matchId;
         this.setStatus('matched');
         this.shouldAutoQueue = false;
@@ -227,10 +238,29 @@ export class OnlineMatchClient {
         }
         this.events.onActionReceived(message.action, message.team);
         break;
+      case 'turn-ready':
+        if (!this.matchId || this.matchId !== message.matchId) {
+          return;
+        }
+        this.events.onTurnReady(message.turn);
+        break;
+      case 'state-sync':
+        if (!this.matchId || this.matchId !== message.matchId) {
+          return;
+        }
+        this.events.onStateSync(message.turn, message.stateJson);
+        break;
+      case 'sync-error':
+        if (!this.matchId || this.matchId !== message.matchId) {
+          return;
+        }
+        this.events.onSyncError(message.message);
+        break;
       case 'opponent-left':
         if (!this.matchId || this.matchId !== message.matchId) {
           return;
         }
+        this.clearQueuedMessages();
         this.setStatus('opponent-left');
         this.shouldAutoQueue = false;
         this.pendingReconnectQueue = false;
@@ -282,6 +312,11 @@ export class OnlineMatchClient {
     this.send({ type: 'action', matchId: this.matchId, team, action });
   }
 
+  reportTurnComplete(team: TeamId, turn: number, stateHash: string, stateJson: string): void {
+    if (!this.matchId) return;
+    this.send({ type: 'turn-complete', matchId: this.matchId, team, turn, stateHash, stateJson });
+  }
+
   disconnect(): void {
     if (!this.socket) return;
     this.manualClose = true;
@@ -297,6 +332,6 @@ export class OnlineMatchClient {
     }
     this.socket = null;
     this.matchId = null;
-    this.messageQueue = [];
+    this.clearQueuedMessages();
   }
 }

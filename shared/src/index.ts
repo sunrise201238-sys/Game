@@ -15,13 +15,17 @@ export type ClientToServerMessage =
   | { type: 'queue'; mapId: string }
   | { type: 'cancel-queue' }
   | { type: 'leave-match'; matchId: string }
-  | { type: 'action'; matchId: string; team: TeamId; action: DragAction };
+  | { type: 'action'; matchId: string; team: TeamId; action: DragAction }
+  | { type: 'turn-complete'; matchId: string; team: TeamId; turn: number; stateHash: string; stateJson: string };
 
 export type ServerToClientMessage =
   | { type: 'queued' }
   | { type: 'queue-cancelled' }
   | { type: 'match-found'; matchId: string; team: TeamId; mapId: string }
   | { type: 'action'; matchId: string; team: TeamId; action: DragAction }
+  | { type: 'state-sync'; matchId: string; turn: number; stateJson: string }
+  | { type: 'turn-ready'; matchId: string; turn: number }
+  | { type: 'sync-error'; matchId: string; message: string }
   | { type: 'opponent-left'; matchId: string }
   | { type: 'error'; message: string };
 
