@@ -41,6 +41,9 @@ interface MatchSession {
   id: string;
   mapId: string;
   clients: ClientSession[];
+  activeTeam: TeamId;
+  turn: number;
+  completionHashes: Partial<Record<TeamId, string>>;
 }
 
 const waitingQueue: ClientSession[] = [];
@@ -108,6 +111,9 @@ const tryMatchPlayers = () => {
       id: matchId,
       mapId,
       clients: [first, second],
+      activeTeam: 0,
+      turn: 0,
+      completionHashes: {},
     };
     matches.set(matchId, match);
 
@@ -121,6 +127,8 @@ const tryMatchPlayers = () => {
 
     send(first, { type: 'match-found', matchId, team: 0, mapId });
     send(second, { type: 'match-found', matchId, team: 1, mapId });
+    send(first, { type: 'turn-ready', matchId, turn: 0 });
+    send(second, { type: 'turn-ready', matchId, turn: 0 });
   }
 };
 
@@ -216,6 +224,9 @@ wss.on('connection', (socket) => {
         if (!match) {
           break;
         }
+        if (parsed.team !== match.activeTeam) {
+          break;
+        }
         const message: ServerToClientMessage = {
           type: 'action',
           matchId: match.id,
@@ -224,6 +235,44 @@ wss.on('connection', (socket) => {
         };
         for (const participant of match.clients) {
           send(participant, message);
+        }
+        match.activeTeam = parsed.team === 0 ? 1 : 0;
+        match.turn += 1;
+        match.completionHashes = {};
+        break;
+      }
+      case 'turn-complete': {
+        if (!client.matchId || client.matchId !== parsed.matchId) {
+          break;
+        }
+        if (client.team !== parsed.team) {
+          break;
+        }
+        const match = matches.get(parsed.matchId);
+        if (!match) {
+          break;
+        }
+        if (parsed.turn !== match.turn) {
+          break;
+        }
+        match.completionHashes[parsed.team] = parsed.stateHash;
+        const hashA = match.completionHashes[0];
+        const hashB = match.completionHashes[1];
+        if (!hashA || !hashB) {
+          break;
+        }
+        if (hashA !== hashB) {
+          for (const participant of match.clients) {
+            send(participant, {
+              type: 'sync-error',
+              matchId: match.id,
+              message: 'State sync mismatch detected. Please start a new match.',
+            });
+          }
+          break;
+        }
+        for (const participant of match.clients) {
+          send(participant, { type: 'turn-ready', matchId: match.id, turn: match.turn });
         }
         break;
       }
