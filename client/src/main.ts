@@ -35,6 +35,10 @@ const leverPowerValue = document.getElementById('lever-power-value') as HTMLSpan
 const leverFireButton = document.getElementById('lever-fire-btn') as HTMLButtonElement;
 const ZOOM_STEP = 1.2;
 const DRAG_INPUT_MULTIPLIER = 1.35;
+const LEVER_DEFAULT_DIRECTION_BY_TEAM: Record<TeamId, number> = {
+  0: 270,
+  1: 180,
+};
 type FireControlMode = 'drag' | 'lever';
 
 let currentMap = getMapById(DEFAULT_MAP_ID);
@@ -125,6 +129,7 @@ let isPanning = false;
 let panPointerId: number | null = null;
 let panLast: { x: number; y: number } | null = null;
 let panKeyActive = false;
+let lastLeverDefaultKey: string | null = null;
 type PointerPosition = { clientX: number; clientY: number };
 const activeTouchPointers = new Map<number, PointerPosition>();
 interface PinchState {
@@ -404,6 +409,20 @@ const getLeverPreviewLine = (): { origin: Vector; current: Vector } | null => {
       y: activeUnit.position.y - vector.y,
     },
   };
+};
+
+const applyLeverDefaultDirectionForTurn = (state: GameState): void => {
+  if (state.phase !== 'aim') {
+    lastLeverDefaultKey = null;
+    return;
+  }
+  const turnKey = `${state.mode}:${state.round}:${state.activeTeam}:${state.phase}`;
+  if (turnKey === lastLeverDefaultKey) {
+    return;
+  }
+  const defaultDirection = LEVER_DEFAULT_DIRECTION_BY_TEAM[state.activeTeam] ?? 0;
+  leverDirectionInput.value = `${defaultDirection}`;
+  lastLeverDefaultKey = turnKey;
 };
 
 function updateFireControlUi(): void {
@@ -1043,6 +1062,7 @@ function toWorldPointFromClient(clientX: number, clientY: number): Vector {
 }
 
 function updateUi(state: GameState): void {
+  applyLeverDefaultDirectionForTurn(state);
   const activeUnit = getActiveUnit(state);
   roundLabel.textContent = `Round ${state.round}`;
   setActiveModeButton(state.mode);
