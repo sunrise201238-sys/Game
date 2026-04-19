@@ -51,6 +51,11 @@ interface UnitSnapshot {
   position: Vector;
 }
 
+interface QueuedNetworkAction {
+  action: DragAction;
+  team: TeamId;
+}
+
 export class GameEngine {
   private state: GameState;
   private listeners: EngineListeners;
@@ -63,6 +68,7 @@ export class GameEngine {
   private playerTeam: TeamId;
   private onlineReady = true;
   private turnCounter = 0;
+  private queuedNetworkActions: QueuedNetworkAction[] = [];
 
   constructor(
     listeners: EngineListeners,
@@ -97,6 +103,7 @@ export class GameEngine {
       this.playerTeam = playerTeam;
     }
     this.turnCounter = 0;
+    this.queuedNetworkActions = [];
     this.state = this.createInitialState();
     this.emitState();
   }
@@ -173,17 +180,22 @@ export class GameEngine {
     };
   }
 
-  beginNetworkAction(action: DragAction, actingTeam: TeamId): void {
+  beginNetworkAction(action: DragAction, actingTeam: TeamId): boolean {
     if (this.mode !== 'online') {
-      return;
+      return false;
     }
     if (this.state.winner || this.state.phase === 'ended') {
-      return;
+      return false;
+    }
+    if (this.state.phase === 'animating') {
+      this.queuedNetworkActions.push({ action: structuredClone(action), team: actingTeam });
+      return true;
     }
     if (actingTeam !== this.state.activeTeam) {
-      return;
+      return false;
     }
     this.executeAction(action, actingTeam);
+    return true;
   }
 
   private scheduleBot(): void {
@@ -300,7 +312,26 @@ export class GameEngine {
     } else {
       this.state.phase = 'aim';
       this.emitState();
+      this.processQueuedNetworkAction();
     }
+  }
+
+  private processQueuedNetworkAction(): void {
+    if (this.mode !== 'online' || this.state.phase !== 'aim' || this.state.winner !== null) {
+      return;
+    }
+    if (this.queuedNetworkActions.length === 0) {
+      return;
+    }
+    const index = this.queuedNetworkActions.findIndex((entry) => entry.team === this.state.activeTeam);
+    if (index === -1) {
+      return;
+    }
+    const [next] = this.queuedNetworkActions.splice(index, 1);
+    if (!next) {
+      return;
+    }
+    this.executeAction(next.action, next.team);
   }
 
   private applyFrame(frame: SimulationFrame): void {
