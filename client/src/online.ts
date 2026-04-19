@@ -33,6 +33,10 @@ export class OnlineMatchClient {
 
   private messageQueue: ClientToServerMessage[] = [];
 
+  private clearQueuedMessages(): void {
+    this.messageQueue = [];
+  }
+
   private manualClose = false;
 
   private reconnectTimer: number | null = null;
@@ -131,6 +135,7 @@ export class OnlineMatchClient {
     this.socket.addEventListener('close', () => {
       this.socket = null;
       this.matchId = null;
+      this.clearQueuedMessages();
       this.clearReconnectTimer();
       if (this.manualClose) {
         this.setStatus('idle');
@@ -146,6 +151,7 @@ export class OnlineMatchClient {
     });
 
     this.socket.addEventListener('error', () => {
+      this.clearQueuedMessages();
       if (this.status !== 'error') {
         this.setStatus('error', 'Connection error');
       }
@@ -204,12 +210,14 @@ export class OnlineMatchClient {
         this.setStatus('queued');
         break;
       case 'queue-cancelled':
+        this.clearQueuedMessages();
         this.shouldAutoQueue = false;
         this.desiredQueueMapId = null;
         this.pendingReconnectQueue = false;
         this.setStatus('idle');
         break;
       case 'match-found':
+        this.clearQueuedMessages();
         this.matchId = message.matchId;
         this.setStatus('matched');
         this.shouldAutoQueue = false;
@@ -231,6 +239,7 @@ export class OnlineMatchClient {
         if (!this.matchId || this.matchId !== message.matchId) {
           return;
         }
+        this.clearQueuedMessages();
         this.setStatus('opponent-left');
         this.shouldAutoQueue = false;
         this.pendingReconnectQueue = false;
@@ -297,6 +306,6 @@ export class OnlineMatchClient {
     }
     this.socket = null;
     this.matchId = null;
-    this.messageQueue = [];
+    this.clearQueuedMessages();
   }
 }

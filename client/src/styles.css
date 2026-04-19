@@ -122,6 +122,11 @@ header h1 {
   outline: none;
 }
 
+.map-picker select option {
+  color: #0b132b;
+  background: #f3f5fa;
+}
+
 header button {
   border: none;
   border-radius: 999px;
