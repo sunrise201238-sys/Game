@@ -348,6 +348,33 @@ main > * {
 .lever-panel input[type='range'] {
   width: 100%;
   margin: 0;
+  accent-color: #53e1ff;
+}
+
+.lever-panel input[type='range']::-webkit-slider-runnable-track {
+  height: 0.38rem;
+}
+
+.lever-panel input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 1.02rem;
+  height: 1.02rem;
+  border-radius: 999px;
+  background: #53e1ff;
+  border: 2px solid rgba(15, 23, 42, 0.75);
+  margin-top: calc((0.38rem - 1.02rem) / 2);
+}
+
+.lever-panel input[type='range']::-moz-range-track {
+  height: 0.38rem;
+}
+
+.lever-panel input[type='range']::-moz-range-thumb {
+  width: 1.02rem;
+  height: 1.02rem;
+  border-radius: 999px;
+  background: #53e1ff;
+  border: 2px solid rgba(15, 23, 42, 0.75);
 }
 
 #lever-fire-btn {
