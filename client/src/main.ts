@@ -12,7 +12,6 @@ const roundLabel = document.getElementById('round-label') as HTMLSpanElement;
 const phaseLabel = document.getElementById('phase-label') as HTMLSpanElement;
 const playerList = document.getElementById('player-units') as HTMLUListElement;
 const botList = document.getElementById('bot-units') as HTMLUListElement;
-const hintText = document.getElementById('hint-text') as HTMLParagraphElement;
 const modeButtons = Array.from(
   document.querySelectorAll<HTMLButtonElement>('[data-mode]')
 );
@@ -1305,64 +1304,6 @@ function updateUi(state: GameState): void {
     opponentHeading.textContent = 'Bot Squad';
   }
 
-  const controlHint = fireControlMode === 'lever'
-    ? 'Lever mode: choose direction + power, then press Fire.'
-    : 'Drag mode: pull opposite your intended travel direction, then release.';
-
-  const baseHint = (() => {
-    if (state.mode === 'online') {
-      if (state.winner !== null) {
-        return 'Tap "Start New Match" to battle again.';
-      }
-      if (onlineStatus !== 'matched') {
-        switch (onlineStatus) {
-          case 'connecting':
-            return 'Connecting to matchmaking…';
-          case 'queued':
-            return 'Searching for an opponent…';
-          case 'opponent-left':
-            return 'Opponent disconnected. Tap "Find Match" to seek a new rival.';
-          case 'disconnected':
-            return 'Connection lost. Tap "Find Match" to reconnect.';
-          case 'error':
-            return onlineStatusMessage ? `Matchmaking error: ${onlineStatusMessage}` : 'Matchmaking error. Please try again.';
-          default:
-            return 'Tap "Find Match" to battle another player online.';
-        }
-      }
-      if (state.phase === 'animating') {
-        return 'Resolving actions…';
-      }
-      if (state.phase === 'aim' && state.activeTeam === localTeam && !engine.canPlayerAct()) {
-        return 'Syncing both devices before the next move…';
-      }
-      const suffix = onlineStatusMessage && state.round === 1 ? ` ${onlineStatusMessage}` : '';
-      return state.activeTeam === localTeam
-        ? `${controlHint}${suffix}`
-        : 'Opponent is acting — watch the field.';
-    }
-    if (state.winner !== null) {
-      return 'Tap "Start New Game" to play again.';
-    }
-    if (state.phase === 'animating') {
-      return 'Resolving actions…';
-    }
-    if (state.mode === 'bot' && state.phase === 'bot-planning') {
-      return 'Bot is preparing a move…';
-    }
-    if (state.mode === 'hotseat') {
-      return state.activeTeam === 0
-        ? `Team One: ${controlHint}`
-        : `Team Two: ${controlHint}`;
-    }
-    return state.activeTeam === 0
-      ? controlHint
-      : 'Bot is acting — watch the field.';
-  })();
-
-  const mapMeta = getMapById(state.mapId);
-  const mapDetails = mapMeta.description ? ` • ${mapMeta.name}: ${mapMeta.description}` : '';
-  hintText.textContent = `${baseHint}${mapDetails}`;
   updateFireControlUi();
 }
 
