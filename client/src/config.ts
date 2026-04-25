@@ -106,7 +106,7 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
     name: 'VIP',
     color: '#facc15',
     radius: 14,
-    maxHp: 85,
+    maxHp: 150,
     collideDamage: 0,
     knockback: 0,
     recoil: 0,
