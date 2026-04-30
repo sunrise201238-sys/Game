@@ -327,6 +327,98 @@ const riftBotSpawns = riftPlayerSpawns.map((p) => ({ x: RIFT_WIDTH - p.x, y: RIF
 
 const MAPS_UNSORTED: MapDefinition[] = [
   {
+    id: 'mobile-lift',
+    name: 'Mobile Lift',
+    description: 'Portrait-friendly lanes with a soft central lift and wide flanks for clean shots.',
+    width: 540,
+    height: 900,
+    lakes: [
+      { x: 190, y: 328, width: 160, height: 244 },
+    ],
+    walls: [
+      { x: 118, y: 408, width: 48, height: 84 },
+      { x: 374, y: 408, width: 48, height: 84 },
+    ],
+    playerSpawns: [
+      { x: 164, y: 702 },
+      { x: 270, y: 748 },
+      { x: 376, y: 702 },
+      { x: 164, y: 806 },
+      { x: 270, y: 846 },
+      { x: 376, y: 806 },
+    ],
+    botSpawns: [
+      { x: 164, y: 198 },
+      { x: 270, y: 152 },
+      { x: 376, y: 198 },
+      { x: 164, y: 94 },
+      { x: 270, y: 54 },
+      { x: 376, y: 94 },
+    ],
+  },
+  {
+    id: 'mobile-garden',
+    name: 'Mobile Garden',
+    description: 'Tall battlefield with rounded hazard pockets and gentle side cover tuned for phone screens.',
+    width: 560,
+    height: 920,
+    lakes: [
+      { x: 90, y: 328, width: 132, height: 132 },
+      { x: 338, y: 460, width: 132, height: 132 },
+    ],
+    walls: [
+      { x: 252, y: 232, width: 56, height: 94 },
+      { x: 252, y: 594, width: 56, height: 94 },
+    ],
+    playerSpawns: [
+      { x: 168, y: 714 },
+      { x: 280, y: 758 },
+      { x: 392, y: 714 },
+      { x: 168, y: 828 },
+      { x: 280, y: 866 },
+      { x: 392, y: 828 },
+    ],
+    botSpawns: [
+      { x: 168, y: 206 },
+      { x: 280, y: 162 },
+      { x: 392, y: 206 },
+      { x: 168, y: 92 },
+      { x: 280, y: 54 },
+      { x: 392, y: 92 },
+    ],
+  },
+  {
+    id: 'mobile-switchback',
+    name: 'Mobile Switchback',
+    description: 'Vertical zig-zag lanes create readable movement paths without visual clutter.',
+    width: 560,
+    height: 960,
+    lakes: [
+      { x: 132, y: 248, width: 296, height: 116 },
+      { x: 132, y: 596, width: 296, height: 116 },
+    ],
+    walls: [
+      { x: 84, y: 430, width: 120, height: 34 },
+      { x: 356, y: 496, width: 120, height: 34 },
+    ],
+    playerSpawns: [
+      { x: 160, y: 748 },
+      { x: 280, y: 790 },
+      { x: 400, y: 748 },
+      { x: 160, y: 868 },
+      { x: 280, y: 906 },
+      { x: 400, y: 868 },
+    ],
+    botSpawns: [
+      { x: 160, y: 212 },
+      { x: 280, y: 170 },
+      { x: 400, y: 212 },
+      { x: 160, y: 92 },
+      { x: 280, y: 54 },
+      { x: 400, y: 92 },
+    ],
+  },
+  {
     id: 'training-grounds',
     name: 'Training Grounds',
     description: 'Open field with no hazards — perfect for fundamentals.',
@@ -778,6 +870,9 @@ const MAPS_UNSORTED: MapDefinition[] = [
 ];
 
 const MAP_ORDER_PRIORITY: Record<string, number> = {
+  'mobile-lift': -140,
+  'mobile-garden': -130,
+  'mobile-switchback': -120,
   'micro-duel': -100,
   'perfect-soldier': 100,
 };
