@@ -584,11 +584,48 @@ const resetJoystickAim = (): void => {
   updateJoystickKnobVisual();
 };
 
-// Fine-tune the retained aim. Rotating the knob direction keeps power fixed and
+// A sensible starting aim (screen-space pull direction) when the player uses the
+// fine-tune buttons before pulling the pad: aim the slingshot toward the enemy.
+const defaultAimScreenDir = (): Vector | null => {
+  const activeUnit = getActiveUnit(currentState);
+  if (!activeUnit) {
+    return null;
+  }
+  const enemies = currentState.units.filter((u) => u.alive && u.team !== activeUnit.team);
+  let target: Vector;
+  if (enemies.length) {
+    target = {
+      x: enemies.reduce((s, u) => s + u.position.x, 0) / enemies.length,
+      y: enemies.reduce((s, u) => s + u.position.y, 0) / enemies.length,
+    };
+  } else {
+    target = { x: currentMap.width / 2, y: currentMap.height / 2 };
+  }
+  const launch = { x: target.x - activeUnit.position.x, y: target.y - activeUnit.position.y };
+  const len = Math.hypot(launch.x, launch.y) || 1;
+  // launch = -rotateScreenVectorToWorld(screenDir), so invert to get screenDir.
+  const wanted = { x: -launch.x / len, y: -launch.y / len };
+  return boardRotated ? { x: -wanted.y, y: wanted.x } : wanted;
+};
+
+// Ensure a direction exists so the fine-tune buttons can wake the aim from zero.
+const ensureJoystickDirection = (): boolean => {
+  if (joystickScreenDir) {
+    return true;
+  }
+  const dir = defaultAimScreenDir();
+  if (!dir) {
+    return false;
+  }
+  joystickScreenDir = dir;
+  return true;
+};
+
+// Fine-tune the aim. Rotating the knob direction keeps power fixed and
 // vice-versa, so the angle and power are independently adjustable — restoring
 // the precise low-power control the dual-lever used to give (e.g. archers).
 const nudgeJoystickAngle = (deltaDeg: number): void => {
-  if (!joystickScreenDir) {
+  if (!ensureJoystickDirection() || !joystickScreenDir) {
     return;
   }
   const rad = (deltaDeg * Math.PI) / 180;
@@ -606,7 +643,7 @@ const nudgeJoystickAngle = (deltaDeg: number): void => {
 };
 
 const nudgeJoystickPower = (delta: number): void => {
-  if (!joystickScreenDir) {
+  if (!ensureJoystickDirection()) {
     return;
   }
   joystickPower = Math.max(0, Math.min(1, joystickPower + delta));
@@ -693,8 +730,10 @@ function updateFireControlUi(): void {
   fireModeToggle.disabled = currentMode === 'online' && onlineStatus !== 'matched';
   joystickPad.classList.toggle('is-disabled', !joystickMode || !canAct || onlineBlocked);
   joystickFireButton.disabled = !joystickMode || !actionReady || onlineBlocked;
-  // Fine nudges need an existing aim direction (set by a pull) to adjust.
-  const nudgeDisabled = !joystickMode || !canAct || onlineBlocked || joystickScreenDir === null;
+  // Fine nudges work whenever the pad is open or an aim already exists; tapping
+  // a power button then seeds a default direction so it can wake the aim line.
+  const nudgeDisabled =
+    !joystickMode || !canAct || onlineBlocked || (joystickScreenDir === null && !joystickPopupOpen);
   joystickDirDecButton.disabled = nudgeDisabled;
   joystickDirIncButton.disabled = nudgeDisabled;
   joystickPowDecButton.disabled = nudgeDisabled;
