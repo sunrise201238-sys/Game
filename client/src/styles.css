@@ -325,6 +325,19 @@ body.board-fullscreen-active .joystick-popup {
   padding: 0.4rem 0.55rem 0.5rem;
 }
 
+/* Permanent controls bar (readout + fine-tune + Fire), always outside the map. */
+.joystick-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+}
+
+.joystick-bar[hidden] {
+  display: none;
+}
+
 .joystick-tap-hint {
   margin: 0;
   align-self: center;

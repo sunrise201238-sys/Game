@@ -28,6 +28,7 @@ const fullscreenButton = document.getElementById('fullscreen-toggle') as HTMLBut
 const fireModeToggle = document.getElementById('fire-mode-toggle') as HTMLButtonElement;
 const fireControls = document.getElementById('fire-controls') as HTMLDivElement;
 const joystickPanel = document.getElementById('joystick-panel') as HTMLDivElement;
+const joystickBar = document.getElementById('joystick-bar') as HTMLDivElement;
 const joystickPad = document.getElementById('joystick-pad') as HTMLDivElement;
 const joystickKnob = document.getElementById('joystick-knob') as HTMLDivElement;
 const joystickDirectionValue = document.getElementById('joystick-direction') as HTMLSpanElement;
@@ -676,9 +677,11 @@ function updateFireControlUi(): void {
   fireModeToggle.textContent = joystickMode ? 'Mode: Joystick' : 'Mode: Drag';
   fireModeToggle.setAttribute('aria-pressed', joystickMode ? 'true' : 'false');
   const canAct = engine.canPlayerAct();
-  // The joystick lives in an anchored popup, shown only while open.
+  // The readout, fine-tune and Fire live in a permanent bar outside the map,
+  // always visible in JS mode. Only the pad floats in the anchored popup.
+  joystickBar.hidden = !joystickMode;
   joystickPanel.hidden = !(joystickMode && joystickPopupOpen);
-  // Prompt the player to tap the active dot when no popup is up.
+  // Prompt the player to tap the active dot when the pad is not up.
   joystickTapHint.hidden = !(joystickMode && !joystickPopupOpen && canAct);
   // Show the resulting launch direction (opposite of the pulled-back knob).
   let launchAngle = 0;
@@ -1550,8 +1553,9 @@ canvas.addEventListener('pointercancel', (event) => {
   endDrag(event, true);
 });
 
-// Tapping anywhere outside the popup (and outside the board, which is handled
-// above) closes it.
+// Tapping anywhere outside the pad closes it — except the permanent controls
+// bar (so fine-tuning/Fire don't dismiss the pad) and the board canvas (handled
+// in the canvas pointerdown above).
 document.addEventListener('pointerdown', (event) => {
   if (!joystickPopupOpen) {
     return;
@@ -1560,7 +1564,12 @@ document.addEventListener('pointerdown', (event) => {
   if (!target) {
     return;
   }
-  if (joystickPanel.contains(target) || target === canvas || canvas.contains(target)) {
+  if (
+    joystickPanel.contains(target) ||
+    fireControls.contains(target) ||
+    target === canvas ||
+    canvas.contains(target)
+  ) {
     return;
   }
   closeJoystickPopup();
