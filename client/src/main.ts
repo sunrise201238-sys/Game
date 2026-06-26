@@ -27,14 +27,11 @@ const fullscreenButton = document.getElementById('fullscreen-toggle') as HTMLBut
 const fireModeToggle = document.getElementById('fire-mode-toggle') as HTMLButtonElement;
 const fireControls = document.getElementById('fire-controls') as HTMLDivElement;
 const joystickPanel = document.getElementById('joystick-panel') as HTMLDivElement;
-const joystickBody = document.getElementById('joystick-body') as HTMLDivElement;
 const joystickPad = document.getElementById('joystick-pad') as HTMLDivElement;
 const joystickKnob = document.getElementById('joystick-knob') as HTMLDivElement;
 const joystickDirectionValue = document.getElementById('joystick-direction') as HTMLSpanElement;
 const joystickPowerValue = document.getElementById('joystick-power') as HTMLSpanElement;
 const joystickFireButton = document.getElementById('joystick-fire-btn') as HTMLButtonElement;
-const joystickCollapseButton = document.getElementById('joystick-collapse-btn') as HTMLButtonElement;
-const joystickReopenButton = document.getElementById('joystick-reopen-btn') as HTMLButtonElement;
 const joystickDirDecButton = document.getElementById('joystick-dir-dec') as HTMLButtonElement;
 const joystickDirIncButton = document.getElementById('joystick-dir-inc') as HTMLButtonElement;
 const joystickPowDecButton = document.getElementById('joystick-pow-dec') as HTMLButtonElement;
@@ -67,7 +64,6 @@ let lastReportedTurn = -1;
 let onlineAwaitingSyncApply = false;
 let pendingOnlineStateSync: { turn: number; state: GameState } | null = null;
 let fireControlMode: FireControlMode = 'drag';
-let joystickCollapsed = false;
 let boardRotated = false;
 // Joystick aim state. joystickScreenDir is a normalized direction in SCREEN
 // space (independent of board rotation); it is converted to a world vector when
@@ -121,10 +117,39 @@ const setBoardRotated = (rotated: boolean) => {
   boardStage.classList.toggle('board-stage--rotated', rotated);
 };
 
+// In pseudo-fullscreen the stage is position:fixed. On iOS a fixed inset:0 box
+// (and 100dvh) can extend past the *visible* viewport when browser chrome is
+// shown, pushing the centred board down and the bottom controls off-screen.
+// Pin the stage to the actual visualViewport so everything stays in frame.
+const applyPseudoFullscreenViewport = () => {
+  if (!boardStage) {
+    return;
+  }
+  if (!pseudoFullscreenActive) {
+    boardStage.style.removeProperty('top');
+    boardStage.style.removeProperty('left');
+    boardStage.style.removeProperty('right');
+    boardStage.style.removeProperty('bottom');
+    boardStage.style.removeProperty('width');
+    boardStage.style.removeProperty('height');
+    return;
+  }
+  const vv = window.visualViewport;
+  const width = Math.max(1, vv?.width ?? window.innerWidth);
+  const height = Math.max(1, vv?.height ?? window.innerHeight);
+  boardStage.style.top = `${vv?.offsetTop ?? 0}px`;
+  boardStage.style.left = `${vv?.offsetLeft ?? 0}px`;
+  boardStage.style.right = 'auto';
+  boardStage.style.bottom = 'auto';
+  boardStage.style.width = `${width}px`;
+  boardStage.style.height = `${height}px`;
+};
+
 const updateFullscreenSizing = () => {
   if (!boardStage) {
     return;
   }
+  applyPseudoFullscreenViewport();
   if (!isBoardFullscreen()) {
     setBoardRotated(false);
     boardStage.style.removeProperty('--board-fullscreen-width');
@@ -248,10 +273,8 @@ const renderScene = () => {
   const aimPreview = fireControlMode === 'joystick' ? getAimPreviewLine() : null;
   const previewOrigin = isDragging ? dragOrigin : aimPreview?.origin ?? null;
   const previewCurrent = isDragging ? dragCurrent : aimPreview?.current ?? null;
-  const hasAim = Boolean(previewOrigin && previewCurrent);
-  // The magnifier follows the aim tip, but hides while the joystick is collapsed
-  // (collapse is for reviewing the whole board before firing).
-  const showLoupe = hasAim && !(fireControlMode === 'joystick' && joystickCollapsed);
+  // The magnifier follows the aim tip whenever an aim is being shown.
+  const showLoupe = Boolean(previewOrigin && previewCurrent);
   renderer.render(currentState, {
     dragOrigin: previewOrigin,
     dragCurrent: previewCurrent,
@@ -632,18 +655,12 @@ const applyAimResetForTurn = (state: GameState): void => {
   resetJoystickAim();
 };
 
-const updateJoystickCollapsedUi = (): void => {
-  joystickBody.hidden = joystickCollapsed;
-  joystickReopenButton.hidden = !joystickCollapsed;
-};
-
 function updateFireControlUi(): void {
   const joystickMode = fireControlMode === 'joystick';
   boardStage.classList.toggle('board-stage--joystick-mode', joystickMode);
   joystickPanel.hidden = !joystickMode;
   fireModeToggle.textContent = joystickMode ? 'Mode: Joystick' : 'Mode: Drag';
   fireModeToggle.setAttribute('aria-pressed', joystickMode ? 'true' : 'false');
-  updateJoystickCollapsedUi();
   // Show the resulting launch direction (opposite of the pulled-back knob).
   let launchAngle = 0;
   if (joystickScreenDir) {
@@ -1386,7 +1403,6 @@ zoomResetButton.addEventListener('click', () => {
 
 fireModeToggle.addEventListener('click', () => {
   fireControlMode = fireControlMode === 'drag' ? 'joystick' : 'drag';
-  joystickCollapsed = false;
   cancelActiveDrag();
   resetJoystickAim();
   updateFireControlUi();
@@ -1401,18 +1417,6 @@ joystickPad.addEventListener('lostpointercapture', onJoystickLostCapture);
 joystickFireButton.addEventListener('click', () => {
   submitJoystickAction();
 });
-joystickCollapseButton.addEventListener('click', () => {
-  joystickCollapsed = true;
-  updateFireControlUi();
-  renderScene();
-});
-joystickReopenButton.addEventListener('click', () => {
-  joystickCollapsed = false;
-  updateFireControlUi();
-  updateJoystickKnobVisual();
-  renderScene();
-});
-
 // Tap = one step; press-and-hold = rapid repeat after a short delay.
 const bindRepeatPress = (button: HTMLButtonElement, action: () => void): void => {
   let holdTimeout: number | null = null;
