@@ -321,9 +321,25 @@ body.board-fullscreen-active .joystick-pad {
   --joystick-size: 128px;
 }
 
-body.board-fullscreen-active .joystick-panel {
+body.board-fullscreen-active .joystick-popup {
   padding: 0.4rem 0.55rem 0.5rem;
-  background: rgba(2, 8, 23, 0.55);
+}
+
+.joystick-tap-hint {
+  margin: 0;
+  align-self: center;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: rgba(226, 232, 240, 0.9);
+  background: rgba(2, 8, 23, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+}
+
+.joystick-tap-hint[hidden] {
+  display: none;
 }
 
 .fire-controls {
@@ -356,45 +372,26 @@ body.board-fullscreen-active .joystick-panel {
   background: linear-gradient(135deg, rgba(83, 225, 255, 0.95), rgba(255, 111, 145, 0.95));
 }
 
-.joystick-panel {
-  width: 100%;
+/* Anchored popup floating beside the active dot (positioned in JS). */
+.joystick-popup {
+  position: fixed;
+  z-index: 1001;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.45rem;
   padding: 0.5rem 0.65rem 0.6rem;
   border-radius: 14px;
-  background: rgba(2, 8, 23, 0.68);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(2px);
+  background: rgba(2, 8, 23, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 14px 34px rgba(2, 8, 23, 0.55);
   box-sizing: border-box;
+  max-width: 92vw;
+  touch-action: none;
 }
 
-.joystick-panel[hidden] {
-  display: none;
-}
-
-.joystick-pad-toggle {
-  align-self: flex-end;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 999px;
-  padding: 0.2rem 0.6rem;
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  color: #e2e8f0;
-  background: rgba(2, 8, 23, 0.82);
-  cursor: pointer;
-}
-
-.joystick-pad-toggle:hover,
-.joystick-pad-toggle:focus-visible {
-  border-color: rgba(83, 225, 255, 0.7);
-  outline: none;
-}
-
-/* Collapsed: hide only the pad; readout, fine-tune nudges and Fire stay. */
-.joystick-panel.pad-collapsed .joystick-pad {
+.joystick-popup[hidden] {
   display: none;
 }
 

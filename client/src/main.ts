@@ -22,6 +22,7 @@ const zoomOutButton = document.getElementById('zoom-out') as HTMLButtonElement;
 const zoomResetButton = document.getElementById('zoom-reset') as HTMLButtonElement;
 const zoomIndicator = document.getElementById('zoom-indicator') as HTMLSpanElement;
 const boardStage = document.getElementById('board-stage') as HTMLDivElement;
+const boardControls = document.querySelector('.board-controls') as HTMLDivElement | null;
 const body = document.body as HTMLBodyElement;
 const fullscreenButton = document.getElementById('fullscreen-toggle') as HTMLButtonElement;
 const fireModeToggle = document.getElementById('fire-mode-toggle') as HTMLButtonElement;
@@ -32,7 +33,7 @@ const joystickKnob = document.getElementById('joystick-knob') as HTMLDivElement;
 const joystickDirectionValue = document.getElementById('joystick-direction') as HTMLSpanElement;
 const joystickPowerValue = document.getElementById('joystick-power') as HTMLSpanElement;
 const joystickFireButton = document.getElementById('joystick-fire-btn') as HTMLButtonElement;
-const joystickPadToggle = document.getElementById('joystick-pad-toggle') as HTMLButtonElement;
+const joystickTapHint = document.getElementById('joystick-tap-hint') as HTMLParagraphElement;
 const joystickDirDecButton = document.getElementById('joystick-dir-dec') as HTMLButtonElement;
 const joystickDirIncButton = document.getElementById('joystick-dir-inc') as HTMLButtonElement;
 const joystickPowDecButton = document.getElementById('joystick-pow-dec') as HTMLButtonElement;
@@ -65,8 +66,6 @@ let lastReportedTurn = -1;
 let onlineAwaitingSyncApply = false;
 let pendingOnlineStateSync: { turn: number; state: GameState } | null = null;
 let fireControlMode: FireControlMode = 'drag';
-// Collapses only the joystick pad; the readout, fine-tune nudges and Fire stay.
-let joystickPadCollapsed = false;
 let boardRotated = false;
 // Joystick aim state. joystickScreenDir is a normalized direction in SCREEN
 // space (independent of board rotation); it is converted to a world vector when
@@ -232,6 +231,12 @@ let panPointerId: number | null = null;
 let panLast: { x: number; y: number } | null = null;
 let panKeyActive = false;
 let lastAimResetKey: string | null = null;
+// JS-mode anchored popup: tap the active dot to open the joystick beside it.
+let joystickPopupOpen = false;
+let dotTapPointerId: number | null = null;
+let dotTapStartClient: { x: number; y: number } | null = null;
+const DOT_TAP_SCREEN_PADDING = 22;
+const DOT_TAP_MOVE_THRESHOLD = 8;
 type PointerPosition = { clientX: number; clientY: number };
 const activeTouchPointers = new Map<number, PointerPosition>();
 interface PinchState {
@@ -273,7 +278,8 @@ const renderScene = () => {
     localTeam = currentState.activeTeam;
   }
   renderer.setPerspectiveTeam(localTeam);
-  const aimPreview = fireControlMode === 'joystick' ? getAimPreviewLine() : null;
+  // In JS mode the aim (and its magnifier) only exist while the popup is open.
+  const aimPreview = fireControlMode === 'joystick' && joystickPopupOpen ? getAimPreviewLine() : null;
   const previewOrigin = isDragging ? dragOrigin : aimPreview?.origin ?? null;
   const previewCurrent = isDragging ? dragCurrent : aimPreview?.current ?? null;
   // The magnifier follows the aim tip whenever an aim is being shown.
@@ -426,6 +432,9 @@ const applyFullscreenSideEffects = () => {
   updateJoystickKnobVisual();
   renderScene();
   updateZoomUi();
+  if (joystickPopupOpen) {
+    positionJoystickPopup();
+  }
   if (!active) {
     resetPinchTracking();
   }
@@ -656,20 +665,21 @@ const applyAimResetForTurn = (state: GameState): void => {
   }
   lastAimResetKey = turnKey;
   resetJoystickAim();
-  // Each new turn starts with the pad available for a fresh gross aim.
-  joystickPadCollapsed = false;
+  // Each new turn starts with the popup closed; tap the new active dot to aim.
+  joystickPopupOpen = false;
+  joystickPanel.hidden = true;
 };
 
 function updateFireControlUi(): void {
   const joystickMode = fireControlMode === 'joystick';
   boardStage.classList.toggle('board-stage--joystick-mode', joystickMode);
-  joystickPanel.hidden = !joystickMode;
   fireModeToggle.textContent = joystickMode ? 'Mode: Joystick' : 'Mode: Drag';
   fireModeToggle.setAttribute('aria-pressed', joystickMode ? 'true' : 'false');
-  joystickPanel.classList.toggle('pad-collapsed', joystickPadCollapsed);
-  joystickPadToggle.textContent = joystickPadCollapsed ? 'Show pad ⌃' : 'Hide pad ⌄';
-  joystickPadToggle.setAttribute('aria-expanded', joystickPadCollapsed ? 'false' : 'true');
-  joystickPadToggle.setAttribute('aria-label', joystickPadCollapsed ? 'Show joystick pad' : 'Hide joystick pad');
+  const canAct = engine.canPlayerAct();
+  // The joystick lives in an anchored popup, shown only while open.
+  joystickPanel.hidden = !(joystickMode && joystickPopupOpen);
+  // Prompt the player to tap the active dot when no popup is up.
+  joystickTapHint.hidden = !(joystickMode && !joystickPopupOpen && canAct);
   // Show the resulting launch direction (opposite of the pulled-back knob).
   let launchAngle = 0;
   if (joystickScreenDir) {
@@ -678,7 +688,6 @@ function updateFireControlUi(): void {
   }
   joystickDirectionValue.textContent = `${launchAngle}°`;
   joystickPowerValue.textContent = `${Math.round(Math.min(1, joystickPower) * 100)}%`;
-  const canAct = engine.canPlayerAct();
   const actionReady = Boolean(getJoystickActionVector());
   const onlineBlocked = currentMode === 'online' && (onlineStatus !== 'matched' || onlinePendingAction);
   fireModeToggle.disabled = currentMode === 'online' && onlineStatus !== 'matched';
@@ -798,13 +807,135 @@ const submitJoystickAction = (): void => {
     onlinePendingAction = true;
     refreshOnlineReadyState();
     client.submitAction(action, team);
-    resetJoystickAim();
-    updateFireControlUi();
+    closeJoystickPopup();
     return;
   }
   engine.beginPlayerAction(actionVector);
+  closeJoystickPopup();
+};
+
+// Place the popup beside the active dot, preferring open space: try several
+// anchor sides, keep it on-screen, and penalise covering dots / the controls /
+// the firing direction toward the enemy.
+const positionJoystickPopup = (): void => {
+  if (!joystickPopupOpen) {
+    return;
+  }
+  const activeUnit = getActiveUnit(currentState);
+  if (!activeUnit) {
+    return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) {
+    return;
+  }
+  const pw = joystickPanel.offsetWidth || 200;
+  const ph = joystickPanel.offsetHeight || 240;
+  const vv = window.visualViewport;
+  const vLeft = vv?.offsetLeft ?? 0;
+  const vTop = vv?.offsetTop ?? 0;
+  const vw = vv?.width ?? window.innerWidth;
+  const vh = vv?.height ?? window.innerHeight;
+  const margin = 8;
+  const minX = vLeft + margin;
+  const maxX = Math.max(minX, vLeft + vw - pw - margin);
+  const minY = vTop + margin;
+  const maxY = Math.max(minY, vTop + vh - ph - margin);
+
+  const dot = worldToClient(activeUnit.position);
+  const view = renderer.getViewSize();
+  const scale = (boardRotated ? rect.height : rect.width) / view.x;
+  const gap = activeUnit.def.radius * scale + 18;
+
+  const obstacles = currentState.units.filter((u) => u.alive).map((u) => worldToClient(u.position));
+  const controlsRect = isBoardFullscreen() ? boardControls?.getBoundingClientRect() ?? null : null;
+
+  const enemies = currentState.units
+    .filter((u) => u.alive && u.team !== activeUnit.team)
+    .map((u) => worldToClient(u.position));
+  let enemyUnit = { x: 0, y: 0 };
+  if (enemies.length) {
+    const ecx = enemies.reduce((s, p) => s + p.x, 0) / enemies.length;
+    const ecy = enemies.reduce((s, p) => s + p.y, 0) / enemies.length;
+    const len = Math.hypot(ecx - dot.x, ecy - dot.y) || 1;
+    enemyUnit = { x: (ecx - dot.x) / len, y: (ecy - dot.y) / len };
+  }
+
+  const candidates = [
+    { x: dot.x + gap, y: dot.y - ph / 2 },
+    { x: dot.x - gap - pw, y: dot.y - ph / 2 },
+    { x: dot.x - pw / 2, y: dot.y + gap },
+    { x: dot.x - pw / 2, y: dot.y - gap - ph },
+    { x: dot.x + gap, y: dot.y + gap },
+    { x: dot.x - gap - pw, y: dot.y + gap },
+    { x: dot.x + gap, y: dot.y - gap - ph },
+    { x: dot.x - gap - pw, y: dot.y - gap - ph },
+  ];
+
+  let best = { x: Math.min(Math.max(dot.x + gap, minX), maxX), y: Math.min(Math.max(dot.y, minY), maxY) };
+  let bestScore = Infinity;
+  for (const cand of candidates) {
+    const x = Math.min(Math.max(cand.x, minX), maxX);
+    const y = Math.min(Math.max(cand.y, minY), maxY);
+    const l = x;
+    const t = y;
+    const r = x + pw;
+    const b = y + ph;
+    let score = 0;
+    for (const o of obstacles) {
+      if (o.x >= l && o.x <= r && o.y >= t && o.y <= b) {
+        score += o.x === dot.x && o.y === dot.y ? 400 : 100;
+      }
+    }
+    if (controlsRect && !(r < controlsRect.left || l > controlsRect.right || b < controlsRect.top || t > controlsRect.bottom)) {
+      score += 250;
+    }
+    score += (Math.abs(x - cand.x) + Math.abs(y - cand.y)) * 0.15;
+    const cx = x + pw / 2 - dot.x;
+    const cy = y + ph / 2 - dot.y;
+    const clen = Math.hypot(cx, cy) || 1;
+    const towardEnemy = (cx / clen) * enemyUnit.x + (cy / clen) * enemyUnit.y;
+    score += Math.max(0, towardEnemy) * 40;
+    if (score < bestScore) {
+      bestScore = score;
+      best = { x, y };
+    }
+  }
+  joystickPanel.style.left = `${best.x}px`;
+  joystickPanel.style.top = `${best.y}px`;
+};
+
+const openJoystickPopup = (): void => {
+  if (fireControlMode !== 'joystick' || !engine.canPlayerAct()) {
+    return;
+  }
+  if (currentMode === 'online' && (onlineStatus !== 'matched' || onlinePendingAction)) {
+    return;
+  }
+  if (!getActiveUnit(currentState)) {
+    return;
+  }
+  resetJoystickAim();
+  joystickPopupOpen = true;
+  updateFireControlUi(); // reveals the popup so it can be measured
+  positionJoystickPopup();
+  renderScene();
+};
+
+const closeJoystickPopup = (): void => {
+  if (joystickPointerId !== null) {
+    try {
+      joystickPad.releasePointerCapture(joystickPointerId);
+    } catch (error) {
+      // ignore release errors
+    }
+    joystickPointerId = null;
+    joystickPad.classList.remove('is-active');
+  }
+  joystickPopupOpen = false;
   resetJoystickAim();
   updateFireControlUi();
+  renderScene();
 };
 
 updateUi(currentState);
@@ -830,14 +961,15 @@ document.addEventListener('keydown', (event) => {
 });
 
 const handleViewportResize = () => {
-  if (!isBoardFullscreen()) {
-    updateJoystickKnobVisual();
-    return;
+  if (isBoardFullscreen()) {
+    updateFullscreenSizing();
+    renderer.refreshViewport();
+    renderScene();
   }
-  updateFullscreenSizing();
-  renderer.refreshViewport();
   updateJoystickKnobVisual();
-  renderScene();
+  if (joystickPopupOpen) {
+    positionJoystickPopup();
+  }
 };
 
 window.addEventListener('resize', handleViewportResize);
@@ -1255,8 +1387,28 @@ canvas.addEventListener('pointerdown', (event) => {
     return;
   }
   if (fireControlMode === 'joystick') {
-    // Aiming happens on the joystick pad; the board itself only pans.
     event.preventDefault();
+    if (joystickPopupOpen) {
+      // A tap anywhere on the board closes the popup; a drag still pans.
+      closeJoystickPopup();
+      beginPan(event);
+      return;
+    }
+    // Tapping the active dot (with a forgiving hit area) opens the popup beside
+    // it. Tracked through the pan gesture so a drag pans instead of opening.
+    const activeUnit = engine.canPlayerAct() ? getActiveUnit(currentState) : null;
+    if (activeUnit) {
+      const dotClient = worldToClient(activeUnit.position);
+      const rect = canvas.getBoundingClientRect();
+      const view = renderer.getViewSize();
+      const scale = (boardRotated ? rect.height : rect.width) / Math.max(1, view.x);
+      const dotScreenRadius = activeUnit.def.radius * scale;
+      const dScreen = Math.hypot(event.clientX - dotClient.x, event.clientY - dotClient.y);
+      if (dScreen <= dotScreenRadius + DOT_TAP_SCREEN_PADDING) {
+        dotTapPointerId = event.pointerId;
+        dotTapStartClient = { x: event.clientX, y: event.clientY };
+      }
+    }
     beginPan(event);
     return;
   }
@@ -1360,7 +1512,17 @@ canvas.addEventListener('pointerup', (event) => {
     }
   }
   if (isPanning && event.pointerId === panPointerId) {
+    const openFromTap =
+      dotTapPointerId === event.pointerId &&
+      dotTapStartClient !== null &&
+      Math.hypot(event.clientX - dotTapStartClient.x, event.clientY - dotTapStartClient.y) <
+        DOT_TAP_MOVE_THRESHOLD;
+    dotTapPointerId = null;
+    dotTapStartClient = null;
     stopPan();
+    if (openFromTap) {
+      openJoystickPopup();
+    }
     return;
   }
   endDrag(event);
@@ -1377,11 +1539,31 @@ canvas.addEventListener('pointercancel', (event) => {
       return;
     }
   }
+  if (dotTapPointerId === event.pointerId) {
+    dotTapPointerId = null;
+    dotTapStartClient = null;
+  }
   if (isPanning && event.pointerId === panPointerId) {
     stopPan();
     return;
   }
   endDrag(event, true);
+});
+
+// Tapping anywhere outside the popup (and outside the board, which is handled
+// above) closes it.
+document.addEventListener('pointerdown', (event) => {
+  if (!joystickPopupOpen) {
+    return;
+  }
+  const target = event.target as Node | null;
+  if (!target) {
+    return;
+  }
+  if (joystickPanel.contains(target) || target === canvas || canvas.contains(target)) {
+    return;
+  }
+  closeJoystickPopup();
 });
 
 canvas.addEventListener('wheel', (event) => {
@@ -1412,17 +1594,10 @@ zoomResetButton.addEventListener('click', () => {
 
 fireModeToggle.addEventListener('click', () => {
   fireControlMode = fireControlMode === 'drag' ? 'joystick' : 'drag';
-  joystickPadCollapsed = false;
+  joystickPopupOpen = false;
   cancelActiveDrag();
   resetJoystickAim();
   updateFireControlUi();
-  renderScene();
-});
-
-joystickPadToggle.addEventListener('click', () => {
-  joystickPadCollapsed = !joystickPadCollapsed;
-  updateFireControlUi();
-  updateJoystickKnobVisual();
   renderScene();
 });
 
@@ -1516,6 +1691,34 @@ function toWorldPointFromClient(clientX: number, clientY: number): Vector {
   return {
     x: offset.x + view.x * ratioX,
     y: offset.y + view.y * ratioY,
+  };
+}
+
+// Inverse of toWorldPointFromClient: world coordinates -> client (viewport) px,
+// rotation-aware. Used to anchor the joystick popup beside the active dot.
+function worldToClient(world: Vector): { x: number; y: number } {
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) {
+    return { x: rect.left, y: rect.top };
+  }
+  const offset = renderer.getOffset();
+  const view = renderer.getViewSize();
+  const ratioX = (world.x - offset.x) / view.x;
+  const ratioY = (world.y - offset.y) / view.y;
+  if (boardRotated) {
+    const unrotatedWidth = rect.height;
+    const unrotatedHeight = rect.width;
+    const localX = ratioX * unrotatedWidth - unrotatedWidth / 2;
+    const localY = ratioY * unrotatedHeight - unrotatedHeight / 2;
+    // forward 90deg cw rotation: screenX = -localY, screenY = localX
+    return {
+      x: rect.left + rect.width / 2 - localY,
+      y: rect.top + rect.height / 2 + localX,
+    };
+  }
+  return {
+    x: rect.left + ratioX * rect.width,
+    y: rect.top + ratioY * rect.height,
   };
 }
 
