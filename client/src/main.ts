@@ -34,7 +34,6 @@ const joystickKnob = document.getElementById('joystick-knob') as HTMLDivElement;
 const joystickDirectionValue = document.getElementById('joystick-direction') as HTMLSpanElement;
 const joystickPowerValue = document.getElementById('joystick-power') as HTMLSpanElement;
 const joystickFireButton = document.getElementById('joystick-fire-btn') as HTMLButtonElement;
-const joystickTapHint = document.getElementById('joystick-tap-hint') as HTMLParagraphElement;
 const joystickDirDecButton = document.getElementById('joystick-dir-dec') as HTMLButtonElement;
 const joystickDirIncButton = document.getElementById('joystick-dir-inc') as HTMLButtonElement;
 const joystickPowDecButton = document.getElementById('joystick-pow-dec') as HTMLButtonElement;
@@ -279,12 +278,12 @@ const renderScene = () => {
     localTeam = currentState.activeTeam;
   }
   renderer.setPerspectiveTeam(localTeam);
-  // In JS mode the aim (and its magnifier) only exist while the popup is open.
-  const aimPreview = fireControlMode === 'joystick' && joystickPopupOpen ? getAimPreviewLine() : null;
+  // The aim line persists in JS mode even after the pad is dismissed, so the
+  // player can review it while fine-tuning; the magnifier stays tied to the pad.
+  const aimPreview = fireControlMode === 'joystick' ? getAimPreviewLine() : null;
   const previewOrigin = isDragging ? dragOrigin : aimPreview?.origin ?? null;
   const previewCurrent = isDragging ? dragCurrent : aimPreview?.current ?? null;
-  // The magnifier follows the aim tip whenever an aim is being shown.
-  const showLoupe = Boolean(previewOrigin && previewCurrent);
+  const showLoupe = Boolean(previewOrigin && previewCurrent) && (isDragging || joystickPopupOpen);
   renderer.render(currentState, {
     dragOrigin: previewOrigin,
     dragCurrent: previewCurrent,
@@ -681,8 +680,6 @@ function updateFireControlUi(): void {
   // always visible in JS mode. Only the pad floats in the anchored popup.
   joystickBar.hidden = !joystickMode;
   joystickPanel.hidden = !(joystickMode && joystickPopupOpen);
-  // Prompt the player to tap the active dot when the pad is not up.
-  joystickTapHint.hidden = !(joystickMode && !joystickPopupOpen && canAct);
   // Show the resulting launch direction (opposite of the pulled-back knob).
   let launchAngle = 0;
   if (joystickScreenDir) {
@@ -810,10 +807,12 @@ const submitJoystickAction = (): void => {
     onlinePendingAction = true;
     refreshOnlineReadyState();
     client.submitAction(action, team);
+    resetJoystickAim();
     closeJoystickPopup();
     return;
   }
   engine.beginPlayerAction(actionVector);
+  resetJoystickAim();
   closeJoystickPopup();
 };
 
@@ -918,13 +917,16 @@ const openJoystickPopup = (): void => {
   if (!getActiveUnit(currentState)) {
     return;
   }
-  resetJoystickAim();
+  // Keep any retained aim so re-opening the pad resumes where you left off.
   joystickPopupOpen = true;
   updateFireControlUi(); // reveals the popup so it can be measured
   positionJoystickPopup();
+  updateJoystickKnobVisual();
   renderScene();
 };
 
+// Dismiss the pad but KEEP the aim: the pre-aim line stays on the board so the
+// player can review it and fine-tune/fire from the permanent bar.
 const closeJoystickPopup = (): void => {
   if (joystickPointerId !== null) {
     try {
@@ -936,7 +938,6 @@ const closeJoystickPopup = (): void => {
     joystickPad.classList.remove('is-active');
   }
   joystickPopupOpen = false;
-  resetJoystickAim();
   updateFireControlUi();
   renderScene();
 };
