@@ -27,11 +27,14 @@ const fullscreenButton = document.getElementById('fullscreen-toggle') as HTMLBut
 const fireModeToggle = document.getElementById('fire-mode-toggle') as HTMLButtonElement;
 const fireControls = document.getElementById('fire-controls') as HTMLDivElement;
 const joystickPanel = document.getElementById('joystick-panel') as HTMLDivElement;
+const joystickBody = document.getElementById('joystick-body') as HTMLDivElement;
 const joystickPad = document.getElementById('joystick-pad') as HTMLDivElement;
 const joystickKnob = document.getElementById('joystick-knob') as HTMLDivElement;
 const joystickDirectionValue = document.getElementById('joystick-direction') as HTMLSpanElement;
 const joystickPowerValue = document.getElementById('joystick-power') as HTMLSpanElement;
 const joystickFireButton = document.getElementById('joystick-fire-btn') as HTMLButtonElement;
+const joystickCollapseButton = document.getElementById('joystick-collapse-btn') as HTMLButtonElement;
+const joystickReopenButton = document.getElementById('joystick-reopen-btn') as HTMLButtonElement;
 const ZOOM_STEP = 1.2;
 const DRAG_INPUT_MULTIPLIER = 1.35;
 // Rotating the landscape board into a portrait viewport. 90deg clockwise so the
@@ -53,6 +56,7 @@ let lastReportedTurn = -1;
 let onlineAwaitingSyncApply = false;
 let pendingOnlineStateSync: { turn: number; state: GameState } | null = null;
 let fireControlMode: FireControlMode = 'drag';
+let joystickCollapsed = false;
 let boardRotated = false;
 // Joystick aim state. joystickScreenDir is a normalized direction in SCREEN
 // space (independent of board rotation); it is converted to a world vector when
@@ -231,9 +235,16 @@ const renderScene = () => {
   }
   renderer.setPerspectiveTeam(localTeam);
   const aimPreview = fireControlMode === 'joystick' ? getAimPreviewLine() : null;
+  const previewOrigin = isDragging ? dragOrigin : aimPreview?.origin ?? null;
+  const previewCurrent = isDragging ? dragCurrent : aimPreview?.current ?? null;
+  const hasAim = Boolean(previewOrigin && previewCurrent);
+  // The magnifier follows the aim tip, but hides while the joystick is collapsed
+  // (collapse is for reviewing the whole board before firing).
+  const showLoupe = hasAim && !(fireControlMode === 'joystick' && joystickCollapsed);
   renderer.render(currentState, {
-    dragOrigin: isDragging ? dragOrigin : aimPreview?.origin ?? null,
-    dragCurrent: isDragging ? dragCurrent : aimPreview?.current ?? null,
+    dragOrigin: previewOrigin,
+    dragCurrent: previewCurrent,
+    showLoupe,
   });
 };
 
@@ -540,9 +551,10 @@ const getJoystickActionVector = (): Vector | null => {
   }
   const worldDir = rotateScreenVectorToWorld(joystickScreenDir);
   const magnitude = activeUnit.def.maxPower * Math.min(1, joystickPower);
+  // Slingshot semantics: pull the knob back, launch the opposite way.
   return {
-    x: worldDir.x * magnitude,
-    y: worldDir.y * magnitude,
+    x: -worldDir.x * magnitude,
+    y: -worldDir.y * magnitude,
   };
 };
 
@@ -577,18 +589,25 @@ const applyAimResetForTurn = (state: GameState): void => {
   resetJoystickAim();
 };
 
+const updateJoystickCollapsedUi = (): void => {
+  joystickBody.hidden = joystickCollapsed;
+  joystickReopenButton.hidden = !joystickCollapsed;
+};
+
 function updateFireControlUi(): void {
   const joystickMode = fireControlMode === 'joystick';
   boardStage.classList.toggle('board-stage--joystick-mode', joystickMode);
   joystickPanel.hidden = !joystickMode;
   fireModeToggle.textContent = joystickMode ? 'Mode: Joystick' : 'Mode: Drag';
   fireModeToggle.setAttribute('aria-pressed', joystickMode ? 'true' : 'false');
-  let screenAngle = 0;
+  updateJoystickCollapsedUi();
+  // Show the resulting launch direction (opposite of the pulled-back knob).
+  let launchAngle = 0;
   if (joystickScreenDir) {
-    const deg = (Math.atan2(joystickScreenDir.y, joystickScreenDir.x) * 180) / Math.PI;
-    screenAngle = ((Math.round(deg) % 360) + 360) % 360;
+    const deg = (Math.atan2(-joystickScreenDir.y, -joystickScreenDir.x) * 180) / Math.PI;
+    launchAngle = ((Math.round(deg) % 360) + 360) % 360;
   }
-  joystickDirectionValue.textContent = `${screenAngle}°`;
+  joystickDirectionValue.textContent = `${launchAngle}°`;
   joystickPowerValue.textContent = `${Math.round(Math.min(1, joystickPower) * 100)}%`;
   const canAct = engine.canPlayerAct();
   const actionReady = Boolean(getJoystickActionVector());
@@ -1318,6 +1337,7 @@ zoomResetButton.addEventListener('click', () => {
 
 fireModeToggle.addEventListener('click', () => {
   fireControlMode = fireControlMode === 'drag' ? 'joystick' : 'drag';
+  joystickCollapsed = false;
   cancelActiveDrag();
   resetJoystickAim();
   updateFireControlUi();
@@ -1331,6 +1351,17 @@ joystickPad.addEventListener('pointercancel', endJoystickPointer);
 joystickPad.addEventListener('lostpointercapture', onJoystickLostCapture);
 joystickFireButton.addEventListener('click', () => {
   submitJoystickAction();
+});
+joystickCollapseButton.addEventListener('click', () => {
+  joystickCollapsed = true;
+  updateFireControlUi();
+  renderScene();
+});
+joystickReopenButton.addEventListener('click', () => {
+  joystickCollapsed = false;
+  updateFireControlUi();
+  updateJoystickKnobVisual();
+  renderScene();
 });
 
 function toWorldPoint(event: PointerEvent | WheelEvent): Vector {

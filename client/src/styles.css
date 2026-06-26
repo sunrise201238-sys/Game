@@ -318,7 +318,12 @@ main > * {
 }
 
 body.board-fullscreen-active .joystick-pad {
-  --joystick-size: 168px;
+  --joystick-size: 128px;
+}
+
+body.board-fullscreen-active .joystick-panel {
+  padding: 0.4rem 0.55rem 0.5rem;
+  background: rgba(2, 8, 23, 0.55);
 }
 
 .fire-controls {
@@ -367,6 +372,65 @@ body.board-fullscreen-active .joystick-pad {
 
 .joystick-panel[hidden] {
   display: none;
+}
+
+.joystick-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.joystick-body[hidden] {
+  display: none;
+}
+
+.joystick-collapse {
+  align-self: flex-end;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  padding: 0.18rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #e2e8f0;
+  background: rgba(2, 8, 23, 0.82);
+  cursor: pointer;
+}
+
+.joystick-collapse:hover,
+.joystick-collapse:focus-visible {
+  border-color: rgba(83, 225, 255, 0.7);
+  outline: none;
+}
+
+.joystick-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.joystick-reopen {
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.03em;
+  color: #e2e8f0;
+  background: rgba(2, 8, 23, 0.82);
+  cursor: pointer;
+}
+
+.joystick-reopen[hidden] {
+  display: none;
+}
+
+.joystick-reopen:hover,
+.joystick-reopen:focus-visible {
+  border-color: rgba(83, 225, 255, 0.7);
+  outline: none;
 }
 
 .joystick-pad {

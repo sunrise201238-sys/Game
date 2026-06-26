@@ -92,7 +92,11 @@ interface FogState {
 interface RenderOptions {
   dragOrigin?: Vector | null;
   dragCurrent?: Vector | null;
+  showLoupe?: boolean;
 }
+
+const LOUPE_CSS_RADIUS = 58;
+const LOUPE_ZOOM = 2.2;
 
 export class Renderer {
   private canvas: HTMLCanvasElement;
@@ -115,6 +119,9 @@ export class Renderer {
   private fogState: FogState | null = null;
   private fogCanvas: HTMLCanvasElement | null = null;
   private fogCtx: CanvasRenderingContext2D | null = null;
+  private loupeTip: Vector | null = null;
+  private loupeCanvas: HTMLCanvasElement | null = null;
+  private loupeCtx: CanvasRenderingContext2D | null = null;
 
   constructor(canvas: HTMLCanvasElement, map: MapDefinition) {
     const ctx = canvas.getContext('2d');
@@ -302,6 +309,7 @@ export class Renderer {
     }
     this.isRendering = true;
     this.needsRerender = false;
+    this.loupeTip = null;
     try {
       this.fogState = this.shouldUseFog(state) ? this.buildFogState(state) : null;
       this.prepareFrame();
@@ -317,6 +325,9 @@ export class Renderer {
       }
       this.drawDragIndicator(state, options);
       this.drawStatus(state);
+      if (options.showLoupe && this.loupeTip) {
+        this.drawAimLoupe(this.loupeTip);
+      }
     } finally {
       this.isRendering = false;
       if (this.needsRerender) {
@@ -737,6 +748,7 @@ export class Renderer {
       ? addVectors(dragOrigin, scale(launchDir, projectileDistance))
       : null;
     const aimTip = movementEnd;
+    this.loupeTip = aimTip;
 
     const { ctx } = this;
     ctx.save();
@@ -919,6 +931,109 @@ export class Renderer {
     ctx.lineTo(-size, -size * 0.6);
     ctx.closePath();
     ctx.fill();
+    ctx.restore();
+  }
+
+  private ensureLoupeContext(size: number): CanvasRenderingContext2D {
+    const dim = Math.max(1, Math.round(size));
+    if (!this.loupeCanvas) {
+      this.loupeCanvas = document.createElement('canvas');
+    }
+    if (this.loupeCanvas.width !== dim || this.loupeCanvas.height !== dim) {
+      this.loupeCanvas.width = dim;
+      this.loupeCanvas.height = dim;
+      this.loupeCtx = null;
+    }
+    if (!this.loupeCtx) {
+      const ctx = this.loupeCanvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('Loupe canvas context not available');
+      }
+      this.loupeCtx = ctx;
+    }
+    return this.loupeCtx;
+  }
+
+  // Magnifying glass over the predicted landing spot. Drawn into the canvas
+  // bitmap (so it rotates with the board) by sampling the already-rendered
+  // pixels around the tip and re-drawing them enlarged inside a circular clip.
+  private drawAimLoupe(worldTip: Vector): void {
+    const pixelScale = this.baseScale * this.zoom * this.dpr;
+    if (!Number.isFinite(pixelScale) || pixelScale <= 0) {
+      return;
+    }
+    const tipX = (worldTip.x - this.offset.x) * pixelScale;
+    const tipY = (worldTip.y - this.offset.y) * pixelScale;
+    const destRadius = LOUPE_CSS_RADIUS * this.dpr;
+    const srcRadius = destRadius / LOUPE_ZOOM;
+    const srcSize = Math.max(1, Math.round(srcRadius * 2));
+
+    // Snapshot the region around the tip BEFORE overpainting it, so the
+    // self-overlapping source and destination don't corrupt each other.
+    const loupeCanvas = this.loupeCanvas ?? (this.loupeCanvas = document.createElement('canvas'));
+    const loupeCtx = this.ensureLoupeContext(srcSize);
+    loupeCtx.setTransform(1, 0, 0, 1, 0, 0);
+    loupeCtx.clearRect(0, 0, srcSize, srcSize);
+    loupeCtx.drawImage(
+      this.canvas,
+      tipX - srcRadius,
+      tipY - srcRadius,
+      srcRadius * 2,
+      srcRadius * 2,
+      0,
+      0,
+      srcSize,
+      srcSize
+    );
+
+    const { ctx } = this;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    // Magnified content, clipped to a circle at the tip.
+    ctx.beginPath();
+    ctx.arc(tipX, tipY, destRadius, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.save();
+    ctx.clip();
+    ctx.fillStyle = '#0a1223';
+    ctx.fillRect(tipX - destRadius, tipY - destRadius, destRadius * 2, destRadius * 2);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(
+      loupeCanvas,
+      0,
+      0,
+      srcSize,
+      srcSize,
+      tipX - destRadius,
+      tipY - destRadius,
+      destRadius * 2,
+      destRadius * 2
+    );
+    ctx.restore();
+
+    // Ring around the loupe.
+    ctx.lineWidth = 2.5 * this.dpr;
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 6 * this.dpr;
+    ctx.beginPath();
+    ctx.arc(tipX, tipY, destRadius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Crosshair marking the exact landing point.
+    const cross = 7 * this.dpr;
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 1.4 * this.dpr;
+    ctx.beginPath();
+    ctx.moveTo(tipX - cross, tipY);
+    ctx.lineTo(tipX + cross, tipY);
+    ctx.moveTo(tipX, tipY - cross);
+    ctx.lineTo(tipX, tipY + cross);
+    ctx.stroke();
+
     ctx.restore();
   }
 
