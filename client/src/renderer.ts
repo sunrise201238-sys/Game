@@ -111,6 +111,7 @@ export class Renderer {
   private isRendering = false;
   private needsRerender = false;
   private perspectiveTeam: TeamId = 0;
+  private widthOverride: number | null = null;
   private fogState: FogState | null = null;
   private fogCanvas: HTMLCanvasElement | null = null;
   private fogCtx: CanvasRenderingContext2D | null = null;
@@ -159,17 +160,23 @@ export class Renderer {
 
   private updateCanvasSize(): void {
     const { width, height } = this.map;
-    const parent = this.canvas.parentElement as HTMLElement | null;
-    const parentRect = parent?.getBoundingClientRect();
-    const measuredWidth = parentRect?.width;
-    const fallbackWidth = parent?.clientWidth;
-    const canvasRectWidth = this.canvas.getBoundingClientRect().width;
-    const widthCandidates = [canvasRectWidth, measuredWidth, fallbackWidth, this.canvas.clientWidth, width];
     let resolvedWidth = width;
-    for (const candidate of widthCandidates) {
-      if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {
-        resolvedWidth = candidate;
-        break;
+    if (this.widthOverride !== null && Number.isFinite(this.widthOverride) && this.widthOverride > 0) {
+      // The board is CSS-rotated, so getBoundingClientRect() reports the rotated
+      // bounding box. Use the caller-provided unrotated CSS width instead.
+      resolvedWidth = this.widthOverride;
+    } else {
+      const parent = this.canvas.parentElement as HTMLElement | null;
+      const parentRect = parent?.getBoundingClientRect();
+      const measuredWidth = parentRect?.width;
+      const fallbackWidth = parent?.clientWidth;
+      const canvasRectWidth = this.canvas.getBoundingClientRect().width;
+      const widthCandidates = [canvasRectWidth, measuredWidth, fallbackWidth, this.canvas.clientWidth, width];
+      for (const candidate of widthCandidates) {
+        if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {
+          resolvedWidth = candidate;
+          break;
+        }
       }
     }
 
@@ -237,6 +244,21 @@ export class Renderer {
   }
 
   refreshViewport(): void {
+    this.updateCanvasSize();
+  }
+
+  /**
+   * When the board is CSS-rotated (portrait fullscreen), getBoundingClientRect()
+   * reports the rotated bounding box, which would mis-scale the canvas. Callers
+   * pass the unrotated CSS width here so the backing store stays crisp. Pass null
+   * to return to auto-measuring.
+   */
+  setWidthOverride(width: number | null): void {
+    const next = width !== null && Number.isFinite(width) && width > 0 ? width : null;
+    if (next === this.widthOverride) {
+      return;
+    }
+    this.widthOverride = next;
     this.updateCanvasSize();
   }
 

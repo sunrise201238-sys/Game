@@ -26,19 +26,20 @@ const body = document.body as HTMLBodyElement;
 const fullscreenButton = document.getElementById('fullscreen-toggle') as HTMLButtonElement;
 const fireModeToggle = document.getElementById('fire-mode-toggle') as HTMLButtonElement;
 const fireControls = document.getElementById('fire-controls') as HTMLDivElement;
-const leverPanel = document.getElementById('lever-panel') as HTMLDivElement;
-const leverDirectionInput = document.getElementById('lever-direction') as HTMLInputElement;
-const leverDirectionValue = document.getElementById('lever-direction-value') as HTMLSpanElement;
-const leverPowerInput = document.getElementById('lever-power') as HTMLInputElement;
-const leverPowerValue = document.getElementById('lever-power-value') as HTMLSpanElement;
-const leverFireButton = document.getElementById('lever-fire-btn') as HTMLButtonElement;
+const joystickPanel = document.getElementById('joystick-panel') as HTMLDivElement;
+const joystickPad = document.getElementById('joystick-pad') as HTMLDivElement;
+const joystickKnob = document.getElementById('joystick-knob') as HTMLDivElement;
+const joystickDirectionValue = document.getElementById('joystick-direction') as HTMLSpanElement;
+const joystickPowerValue = document.getElementById('joystick-power') as HTMLSpanElement;
+const joystickFireButton = document.getElementById('joystick-fire-btn') as HTMLButtonElement;
 const ZOOM_STEP = 1.2;
 const DRAG_INPUT_MULTIPLIER = 1.35;
-const LEVER_DIRECTION_OFFSET_BY_TEAM: Record<TeamId, number> = {
-  0: 270,
-  1: 90,
-};
-type FireControlMode = 'drag' | 'lever';
+// Rotating the landscape board into a portrait viewport. 90deg clockwise so the
+// board's top edge points to the right of the device held upright.
+const BOARD_ROTATION_DEG = 90;
+// Joystick travel below this fraction of the pad radius is treated as "no aim".
+const JOYSTICK_DEADZONE = 0.08;
+type FireControlMode = 'drag' | 'joystick';
 
 let currentMap = getMapById(DEFAULT_MAP_ID);
 let currentMode: GameMode = 'bot';
@@ -52,6 +53,14 @@ let lastReportedTurn = -1;
 let onlineAwaitingSyncApply = false;
 let pendingOnlineStateSync: { turn: number; state: GameState } | null = null;
 let fireControlMode: FireControlMode = 'drag';
+let boardRotated = false;
+// Joystick aim state. joystickScreenDir is a normalized direction in SCREEN
+// space (independent of board rotation); it is converted to a world vector when
+// firing/previewing so it stays intuitive even when the board is rotated.
+let joystickScreenDir: Vector | null = null;
+let joystickPower = 0;
+let joystickHasAim = false;
+let joystickPointerId: number | null = null;
 
 for (const map of MAPS) {
   const option = document.createElement('option');
@@ -64,13 +73,20 @@ mapSelect.value = currentMap.id;
 const renderer = new Renderer(canvas, currentMap);
 const zoomLimits = renderer.getZoomLimits();
 
-const prefersPseudoFullscreen = (() => {
+const isTouchCentric = (() => {
   if (typeof window === 'undefined') {
     return false;
   }
   const touchPoints = navigator.maxTouchPoints ?? 0;
   const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
-  const isTouchCentric = coarsePointer || touchPoints > 0 || 'ontouchstart' in window;
+  return coarsePointer || touchPoints > 0 || 'ontouchstart' in window;
+})();
+
+const prefersPseudoFullscreen = (() => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  const touchPoints = navigator.maxTouchPoints ?? 0;
   if (!isTouchCentric) {
     return false;
   }
@@ -82,24 +98,64 @@ const prefersPseudoFullscreen = (() => {
   return isiPadLike || isLargeTouchDisplay;
 })();
 
+const setBoardRotated = (rotated: boolean) => {
+  if (boardRotated === rotated) {
+    return;
+  }
+  boardRotated = rotated;
+  boardStage.classList.toggle('board-stage--rotated', rotated);
+};
+
 const updateFullscreenSizing = () => {
   if (!boardStage) {
     return;
   }
   if (!isBoardFullscreen()) {
+    setBoardRotated(false);
     boardStage.style.removeProperty('--board-fullscreen-width');
     boardStage.style.removeProperty('--board-fullscreen-height');
+    boardStage.style.removeProperty('--board-rotated-shift');
+    renderer.setWidthOverride(null);
     return;
   }
   const viewportWidth = Math.max(1, window.visualViewport?.width ?? window.innerWidth);
   const viewportHeight = Math.max(1, window.visualViewport?.height ?? window.innerHeight);
-  const controlsHeight = Math.ceil(fireControls?.getBoundingClientRect().height ?? 0);
-  const fullscreenChromeReserve = 64;
-  const adjustedViewportHeight = Math.max(1, viewportHeight - controlsHeight - fullscreenChromeReserve);
   const aspect = currentMap.width / currentMap.height;
   if (!Number.isFinite(aspect) || aspect <= 0) {
     return;
   }
+  // Rotate a landscape board into a portrait viewport so it fills the screen
+  // instead of shrinking to a thin strip. Only on touch devices to avoid
+  // surprising desktop users who maximise a tall window.
+  const shouldRotate = isTouchCentric && aspect > 1 && viewportHeight > viewportWidth;
+  setBoardRotated(shouldRotate);
+
+  if (shouldRotate) {
+    // The board is rotated 90deg: its on-screen footprint is (height x width).
+    // Controls overlay the bottom, so reserve the band they occupy and nudge the
+    // board upward by half that band to keep it clear. Measuring the controls'
+    // top edge folds in the safe-area inset baked into their CSS bottom offset.
+    const controlsRect = fireControls?.getBoundingClientRect();
+    const controlsBand =
+      controlsRect && controlsRect.height > 0 ? viewportHeight - controlsRect.top + 10 : 0;
+    const bottomReserve = Math.min(viewportHeight * 0.5, Math.max(0, controlsBand));
+    const availWidth = Math.max(1, viewportWidth - 8);
+    const availHeight = Math.max(1, viewportHeight - bottomReserve);
+    // unrotatedHeight (footprint width) is bounded by both axes once rotated.
+    const unrotatedHeight = Math.min(availWidth, availHeight / aspect);
+    const unrotatedWidth = unrotatedHeight * aspect;
+    boardStage.style.setProperty('--board-fullscreen-width', `${unrotatedWidth}px`);
+    boardStage.style.setProperty('--board-fullscreen-height', `${unrotatedHeight}px`);
+    boardStage.style.setProperty('--board-rotated-shift', `${bottomReserve / 2}px`);
+    renderer.setWidthOverride(unrotatedWidth);
+    return;
+  }
+
+  boardStage.style.removeProperty('--board-rotated-shift');
+  renderer.setWidthOverride(null);
+  const controlsHeight = Math.ceil(fireControls?.getBoundingClientRect().height ?? 0);
+  const fullscreenChromeReserve = 64;
+  const adjustedViewportHeight = Math.max(1, viewportHeight - controlsHeight - fullscreenChromeReserve);
   const viewportAspect = viewportWidth / adjustedViewportHeight;
   let targetWidth = viewportWidth;
   let targetHeight = adjustedViewportHeight;
@@ -132,7 +188,7 @@ let isPanning = false;
 let panPointerId: number | null = null;
 let panLast: { x: number; y: number } | null = null;
 let panKeyActive = false;
-let lastLeverDefaultKey: string | null = null;
+let lastAimResetKey: string | null = null;
 type PointerPosition = { clientX: number; clientY: number };
 const activeTouchPointers = new Map<number, PointerPosition>();
 interface PinchState {
@@ -174,10 +230,10 @@ const renderScene = () => {
     localTeam = currentState.activeTeam;
   }
   renderer.setPerspectiveTeam(localTeam);
-  const leverPreview = fireControlMode === 'lever' ? getLeverPreviewLine() : null;
+  const aimPreview = fireControlMode === 'joystick' ? getAimPreviewLine() : null;
   renderer.render(currentState, {
-    dragOrigin: isDragging ? dragOrigin : leverPreview?.origin ?? null,
-    dragCurrent: isDragging ? dragCurrent : leverPreview?.current ?? null,
+    dragOrigin: isDragging ? dragOrigin : aimPreview?.origin ?? null,
+    dragCurrent: isDragging ? dragCurrent : aimPreview?.current ?? null,
   });
 };
 
@@ -319,6 +375,7 @@ const applyFullscreenSideEffects = () => {
   updateFullscreenSizing();
   updateFullscreenUi();
   renderer.refreshViewport();
+  updateJoystickKnobVisual();
   renderScene();
   updateZoomUi();
   if (!active) {
@@ -440,54 +497,61 @@ const applyZoomFactor = (factor: number, anchor?: Vector) => {
   updateZoomUi();
 };
 
-const getLeverDirectionDegrees = (): number => {
-  const parsed = Number.parseFloat(leverDirectionInput.value);
-  const normalizedInput = Number.isFinite(parsed)
-    ? ((Math.round(parsed) % 360) + 360) % 360
-    : 0;
-  const activeTeam = currentState?.activeTeam ?? 0;
-  const teamOffset = LEVER_DIRECTION_OFFSET_BY_TEAM[activeTeam] ?? 0;
-  return (normalizedInput + teamOffset) % 360;
-};
-
-const getLeverDirectionInputDegrees = (): number => {
-  const parsed = Number.parseFloat(leverDirectionInput.value);
-  if (!Number.isFinite(parsed)) {
+const getJoystickRadius = (): number => {
+  const rect = joystickPad.getBoundingClientRect();
+  const padRadius = Math.min(rect.width, rect.height) / 2;
+  if (!Number.isFinite(padRadius) || padRadius <= 0) {
     return 0;
   }
-  return ((Math.round(parsed) % 360) + 360) % 360;
+  // Keep the knob (≈36% of the pad) comfortably inside the base.
+  return padRadius * 0.7;
 };
 
-const getLeverPowerRatio = (): number => {
-  const parsed = Number.parseFloat(leverPowerInput.value);
-  if (!Number.isFinite(parsed)) {
-    return 0;
+const updateJoystickKnobVisual = (): void => {
+  const radius = getJoystickRadius();
+  let knobX = 0;
+  let knobY = 0;
+  if (joystickScreenDir && joystickPower > 0 && radius > 0) {
+    const travel = Math.min(1, joystickPower) * radius;
+    knobX = joystickScreenDir.x * travel;
+    knobY = joystickScreenDir.y * travel;
   }
-  return Math.max(0, Math.min(1, parsed / 100));
+  joystickKnob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
+  joystickPad.classList.toggle('is-aimed', joystickHasAim && joystickPower >= JOYSTICK_DEADZONE);
 };
 
-const getLeverActionVector = (): Vector | null => {
+const resetJoystickAim = (): void => {
+  joystickScreenDir = null;
+  joystickPower = 0;
+  joystickHasAim = false;
+  updateJoystickKnobVisual();
+};
+
+const getJoystickActionVector = (): Vector | null => {
   if (!engine.canPlayerAct()) {
+    return null;
+  }
+  if (!joystickHasAim || !joystickScreenDir || joystickPower < JOYSTICK_DEADZONE) {
     return null;
   }
   const activeUnit = getActiveUnit(currentState);
   if (!activeUnit) {
     return null;
   }
-  const radians = (getLeverDirectionDegrees() * Math.PI) / 180;
-  const magnitude = activeUnit.def.maxPower * getLeverPowerRatio();
+  const worldDir = rotateScreenVectorToWorld(joystickScreenDir);
+  const magnitude = activeUnit.def.maxPower * Math.min(1, joystickPower);
   return {
-    x: Math.cos(radians) * magnitude,
-    y: Math.sin(radians) * magnitude,
+    x: worldDir.x * magnitude,
+    y: worldDir.y * magnitude,
   };
 };
 
-const getLeverPreviewLine = (): { origin: Vector; current: Vector } | null => {
-  if (fireControlMode !== 'lever') {
+const getAimPreviewLine = (): { origin: Vector; current: Vector } | null => {
+  if (fireControlMode !== 'joystick') {
     return null;
   }
   const activeUnit = getActiveUnit(currentState);
-  const vector = getLeverActionVector();
+  const vector = getJoystickActionVector();
   if (!activeUnit || !vector) {
     return null;
   }
@@ -500,45 +564,130 @@ const getLeverPreviewLine = (): { origin: Vector; current: Vector } | null => {
   };
 };
 
-const applyLeverDefaultDirectionForTurn = (state: GameState): void => {
+const applyAimResetForTurn = (state: GameState): void => {
   if (state.phase !== 'aim') {
-    lastLeverDefaultKey = null;
+    lastAimResetKey = null;
     return;
   }
   const turnKey = `${state.mode}:${state.round}:${state.activeTeam}:${state.phase}`;
-  if (turnKey === lastLeverDefaultKey) {
+  if (turnKey === lastAimResetKey) {
     return;
   }
-  leverDirectionInput.value = '0';
-  lastLeverDefaultKey = turnKey;
+  lastAimResetKey = turnKey;
+  resetJoystickAim();
 };
 
 function updateFireControlUi(): void {
-  const leverMode = fireControlMode === 'lever';
-  boardStage.classList.toggle('board-stage--lever-mode', leverMode);
-  leverPanel.hidden = !leverMode;
-  fireModeToggle.textContent = leverMode ? 'Mode: Lever' : 'Mode: Drag';
-  fireModeToggle.setAttribute('aria-pressed', leverMode ? 'true' : 'false');
-  const direction = getLeverDirectionInputDegrees();
-  leverDirectionValue.textContent = `${direction}°`;
-  const powerPercent = Math.round(getLeverPowerRatio() * 100);
-  leverPowerValue.textContent = `${powerPercent}%`;
+  const joystickMode = fireControlMode === 'joystick';
+  boardStage.classList.toggle('board-stage--joystick-mode', joystickMode);
+  joystickPanel.hidden = !joystickMode;
+  fireModeToggle.textContent = joystickMode ? 'Mode: Joystick' : 'Mode: Drag';
+  fireModeToggle.setAttribute('aria-pressed', joystickMode ? 'true' : 'false');
+  let screenAngle = 0;
+  if (joystickScreenDir) {
+    const deg = (Math.atan2(joystickScreenDir.y, joystickScreenDir.x) * 180) / Math.PI;
+    screenAngle = ((Math.round(deg) % 360) + 360) % 360;
+  }
+  joystickDirectionValue.textContent = `${screenAngle}°`;
+  joystickPowerValue.textContent = `${Math.round(Math.min(1, joystickPower) * 100)}%`;
   const canAct = engine.canPlayerAct();
-  const actionReady = Boolean(getLeverActionVector());
+  const actionReady = Boolean(getJoystickActionVector());
+  const onlineBlocked = currentMode === 'online' && (onlineStatus !== 'matched' || onlinePendingAction);
   fireModeToggle.disabled = currentMode === 'online' && onlineStatus !== 'matched';
-  leverDirectionInput.disabled = !leverMode || !canAct;
-  leverPowerInput.disabled = !leverMode || !canAct;
-  leverFireButton.disabled = !leverMode || !actionReady || (currentMode === 'online' && onlinePendingAction);
-  if (isBoardFullscreen()) {
+  joystickPad.classList.toggle('is-disabled', !joystickMode || !canAct || onlineBlocked);
+  joystickFireButton.disabled = !joystickMode || !actionReady || onlineBlocked;
+  // Don't reflow mid-drag: the controls keep a stable size while aiming.
+  if (isBoardFullscreen() && joystickPointerId === null) {
     updateFullscreenSizing();
   }
 }
 
-const submitLeverAction = () => {
-  if (fireControlMode !== 'lever') {
+const updateJoystickFromPointer = (event: PointerEvent): void => {
+  const rect = joystickPad.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const dx = event.clientX - centerX;
+  const dy = event.clientY - centerY;
+  const dist = Math.hypot(dx, dy);
+  const radius = getJoystickRadius();
+  if (dist < 1 || radius <= 0) {
+    joystickScreenDir = null;
+    joystickPower = 0;
+    joystickHasAim = false;
+  } else {
+    joystickScreenDir = { x: dx / dist, y: dy / dist };
+    joystickPower = Math.min(1, dist / radius);
+    joystickHasAim = joystickPower >= JOYSTICK_DEADZONE;
+  }
+  updateJoystickKnobVisual();
+  updateFireControlUi();
+  renderScene();
+};
+
+const onJoystickPointerDown = (event: PointerEvent): void => {
+  if (fireControlMode !== 'joystick' || !engine.canPlayerAct()) {
     return;
   }
-  const actionVector = getLeverActionVector();
+  if (currentMode === 'online' && (onlineStatus !== 'matched' || onlinePendingAction)) {
+    return;
+  }
+  event.preventDefault();
+  joystickPointerId = event.pointerId;
+  joystickPad.classList.add('is-active');
+  try {
+    joystickPad.setPointerCapture(event.pointerId);
+  } catch (error) {
+    // ignore capture errors
+  }
+  updateJoystickFromPointer(event);
+};
+
+const onJoystickPointerMove = (event: PointerEvent): void => {
+  if (joystickPointerId === null || event.pointerId !== joystickPointerId) {
+    return;
+  }
+  event.preventDefault();
+  updateJoystickFromPointer(event);
+};
+
+// Stop tracking the joystick pointer and refresh the UI. The aim itself is
+// retained so the player can review it before committing with the Fire button.
+const finishJoystickPointer = (): void => {
+  joystickPointerId = null;
+  joystickPad.classList.remove('is-active');
+  updateJoystickKnobVisual();
+  updateFireControlUi();
+  renderScene();
+};
+
+const endJoystickPointer = (event: PointerEvent): void => {
+  if (joystickPointerId === null || event.pointerId !== joystickPointerId) {
+    return;
+  }
+  try {
+    joystickPad.releasePointerCapture(event.pointerId);
+  } catch (error) {
+    // ignore release errors
+  }
+  finishJoystickPointer();
+};
+
+// If the pad is disabled mid-drag (e.g. the turn ends or an online opponent
+// leaves), pointer-events:none implicitly releases capture and fires
+// lostpointercapture instead of pointerup/pointercancel — clean up so the
+// joystick can't get stuck in an active state.
+const onJoystickLostCapture = (event: PointerEvent): void => {
+  if (joystickPointerId === null || event.pointerId !== joystickPointerId) {
+    return;
+  }
+  finishJoystickPointer();
+};
+
+const submitJoystickAction = (): void => {
+  if (fireControlMode !== 'joystick') {
+    return;
+  }
+  const actionVector = getJoystickActionVector();
   if (!actionVector) {
     return;
   }
@@ -555,10 +704,12 @@ const submitLeverAction = () => {
     onlinePendingAction = true;
     refreshOnlineReadyState();
     client.submitAction(action, team);
+    resetJoystickAim();
     updateFireControlUi();
     return;
   }
   engine.beginPlayerAction(actionVector);
+  resetJoystickAim();
   updateFireControlUi();
 };
 
@@ -586,13 +737,17 @@ document.addEventListener('keydown', (event) => {
 
 const handleViewportResize = () => {
   if (!isBoardFullscreen()) {
+    updateJoystickKnobVisual();
     return;
   }
   updateFullscreenSizing();
   renderer.refreshViewport();
+  updateJoystickKnobVisual();
+  renderScene();
 };
 
 window.addEventListener('resize', handleViewportResize);
+window.addEventListener('orientationchange', handleViewportResize);
 window.visualViewport?.addEventListener('resize', handleViewportResize);
 window.visualViewport?.addEventListener('scroll', handleViewportResize);
 
@@ -703,6 +858,7 @@ restartButton.addEventListener('click', () => {
     }
   }
   dragPointerId = null;
+  resetJoystickAim();
   updateFireControlUi();
   stopPan();
   if (currentMode === 'online') {
@@ -741,6 +897,7 @@ mapSelect.addEventListener('change', () => {
     }
   }
   dragPointerId = null;
+  resetJoystickAim();
   stopPan();
   updateZoomUi();
   updateFireControlUi();
@@ -878,12 +1035,7 @@ const updatePinchGesture = () => {
   const deltaClientX = centerClient.x - pinchState.lastCenterClient.x;
   const deltaClientY = centerClient.y - pinchState.lastCenterClient.y;
   if (deltaClientX !== 0 || deltaClientY !== 0) {
-    const view = renderer.getViewSize();
-    const worldDelta = {
-      x: (-deltaClientX / rect.width) * view.x,
-      y: (-deltaClientY / rect.height) * view.y,
-    };
-    renderer.panBy(worldDelta);
+    renderer.panBy(clientDeltaToWorldDelta(deltaClientX, deltaClientY));
   }
   const initialDistance = pinchState.initialDistance;
   if (initialDistance > 0) {
@@ -929,15 +1081,9 @@ const updateDragPreview = (event: PointerEvent) => {
 
 const updatePanFromPointer = (event: PointerEvent) => {
   if (!isPanning || event.pointerId !== panPointerId || !panLast) return;
-  const rect = canvas.getBoundingClientRect();
-  if (rect.width === 0 || rect.height === 0) return;
-  const view = renderer.getViewSize();
   const deltaX = event.clientX - panLast.x;
   const deltaY = event.clientY - panLast.y;
-  const worldDelta = {
-    x: (-deltaX / rect.width) * view.x,
-    y: (-deltaY / rect.height) * view.y,
-  };
+  const worldDelta = clientDeltaToWorldDelta(deltaX, deltaY);
   panLast = { x: event.clientX, y: event.clientY };
   renderer.panBy(worldDelta);
   renderScene();
@@ -1014,7 +1160,8 @@ canvas.addEventListener('pointerdown', (event) => {
   if (event.button !== 0) {
     return;
   }
-  if (fireControlMode === 'lever') {
+  if (fireControlMode === 'joystick') {
+    // Aiming happens on the joystick pad; the board itself only pans.
     event.preventDefault();
     beginPan(event);
     return;
@@ -1170,24 +1317,20 @@ zoomResetButton.addEventListener('click', () => {
 });
 
 fireModeToggle.addEventListener('click', () => {
-  fireControlMode = fireControlMode === 'drag' ? 'lever' : 'drag';
+  fireControlMode = fireControlMode === 'drag' ? 'joystick' : 'drag';
   cancelActiveDrag();
+  resetJoystickAim();
   updateFireControlUi();
   renderScene();
 });
 
-leverDirectionInput.addEventListener('input', () => {
-  updateFireControlUi();
-  renderScene();
-});
-
-leverPowerInput.addEventListener('input', () => {
-  updateFireControlUi();
-  renderScene();
-});
-
-leverFireButton.addEventListener('click', () => {
-  submitLeverAction();
+joystickPad.addEventListener('pointerdown', onJoystickPointerDown);
+joystickPad.addEventListener('pointermove', onJoystickPointerMove);
+joystickPad.addEventListener('pointerup', endJoystickPointer);
+joystickPad.addEventListener('pointercancel', endJoystickPointer);
+joystickPad.addEventListener('lostpointercapture', onJoystickLostCapture);
+joystickFireButton.addEventListener('click', () => {
+  submitJoystickAction();
 });
 
 function toWorldPoint(event: PointerEvent | WheelEvent): Vector {
@@ -1199,18 +1342,71 @@ function toWorldPointFromClient(clientX: number, clientY: number): Vector {
   if (rect.width === 0 || rect.height === 0) {
     return { x: 0, y: 0 };
   }
-  const ratioX = (clientX - rect.left) / rect.width;
-  const ratioY = (clientY - rect.top) / rect.height;
   const offset = renderer.getOffset();
   const view = renderer.getViewSize();
+  let ratioX: number;
+  let ratioY: number;
+  if (boardRotated) {
+    // The canvas is CSS-rotated 90deg clockwise about its centre. Undo that to
+    // recover unrotated local coordinates. For a 90deg rotation the on-screen
+    // bounding box is (unrotatedHeight x unrotatedWidth), so unrotated width
+    // equals rect.height and unrotated height equals rect.width.
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const sx = clientX - centerX;
+    const sy = clientY - centerY;
+    const localX = sy; // inverse of 90deg cw: localX = screenY
+    const localY = -sx; //                     localY = -screenX
+    const unrotatedWidth = rect.height;
+    const unrotatedHeight = rect.width;
+    ratioX = (localX + unrotatedWidth / 2) / unrotatedWidth;
+    ratioY = (localY + unrotatedHeight / 2) / unrotatedHeight;
+  } else {
+    ratioX = (clientX - rect.left) / rect.width;
+    ratioY = (clientY - rect.top) / rect.height;
+  }
   return {
     x: offset.x + view.x * ratioX,
     y: offset.y + view.y * ratioY,
   };
 }
 
+// Convert a screen-space pointer delta into a world-space pan delta, accounting
+// for board rotation. Preserves the existing sign convention (drag content to
+// follow the pointer).
+function clientDeltaToWorldDelta(deltaClientX: number, deltaClientY: number): Vector {
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) {
+    return { x: 0, y: 0 };
+  }
+  const view = renderer.getViewSize();
+  if (boardRotated) {
+    const localDX = deltaClientY;
+    const localDY = -deltaClientX;
+    const unrotatedWidth = rect.height;
+    const unrotatedHeight = rect.width;
+    return {
+      x: (-localDX / unrotatedWidth) * view.x,
+      y: (-localDY / unrotatedHeight) * view.y,
+    };
+  }
+  return {
+    x: (-deltaClientX / rect.width) * view.x,
+    y: (-deltaClientY / rect.height) * view.y,
+  };
+}
+
+// Rotate a screen-space direction into world space. World x/y share a uniform
+// pixel scale, so only the rotation matters (no anisotropic scaling).
+function rotateScreenVectorToWorld(vector: Vector): Vector {
+  if (!boardRotated) {
+    return { ...vector };
+  }
+  return { x: vector.y, y: -vector.x };
+}
+
 function updateUi(state: GameState): void {
-  applyLeverDefaultDirectionForTurn(state);
+  applyAimResetForTurn(state);
   const activeUnit = getActiveUnit(state);
   roundLabel.textContent = `Round ${state.round}`;
   setActiveModeButton(state.mode);
