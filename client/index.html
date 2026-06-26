@@ -48,12 +48,23 @@
             </div>
             <div id="fire-controls" class="fire-controls" role="region" aria-label="Fire controls">
               <button id="fire-mode-toggle" type="button" aria-pressed="false">Mode: Drag</button>
-              <div id="lever-panel" class="lever-panel" hidden>
-                <label for="lever-direction">Direction <span id="lever-direction-value">0°</span></label>
-                <input id="lever-direction" type="range" min="0" max="359" step="1" value="0" />
-                <label for="lever-power">Power <span id="lever-power-value">65%</span></label>
-                <input id="lever-power" type="range" min="0" max="100" step="1" value="65" />
-                <button id="lever-fire-btn" type="button">Fire</button>
+              <div id="joystick-panel" class="joystick-panel" hidden>
+                <div
+                  id="joystick-pad"
+                  class="joystick-pad"
+                  role="application"
+                  aria-label="Aim joystick: drag to set direction and power"
+                >
+                  <div class="joystick-pad__base" aria-hidden="true"></div>
+                  <div class="joystick-pad__crosshair" aria-hidden="true"></div>
+                  <div id="joystick-knob" class="joystick-pad__knob" aria-hidden="true"></div>
+                  <span id="joystick-hint" class="joystick-pad__hint">Drag to aim</span>
+                </div>
+                <div class="joystick-readout" aria-hidden="true">
+                  <span>Dir <span id="joystick-direction">0°</span></span>
+                  <span>Power <span id="joystick-power">0%</span></span>
+                </div>
+                <button id="joystick-fire-btn" type="button" disabled>Fire</button>
               </div>
             </div>
           </div>

@@ -290,6 +290,37 @@ main > * {
   aspect-ratio: var(--board-aspect, 16 / 9);
 }
 
+/*
+ * Portrait fullscreen on mobile: rotate the landscape board 90deg so it fills
+ * the screen instead of collapsing into a short horizontal strip. The viewport
+ * is taken out of flow and centred; pointer math compensates for the rotation.
+ */
+#board-stage.board-stage--rotated #map-viewport {
+  position: absolute;
+  top: calc(50% - var(--board-rotated-shift, 0px));
+  left: 50%;
+  width: var(--board-fullscreen-width, 100vw);
+  height: var(--board-fullscreen-height, auto);
+  max-width: none;
+  aspect-ratio: auto;
+  transform: translate(-50%, -50%) rotate(90deg);
+  transform-origin: center center;
+}
+
+#board-stage.board-stage--rotated #fire-controls {
+  position: absolute;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+  transform: translateX(-50%);
+  width: auto;
+  max-width: 92vw;
+  z-index: 1003;
+}
+
+body.board-fullscreen-active .joystick-pad {
+  --joystick-size: 168px;
+}
+
 .fire-controls {
   display: flex;
   flex-direction: column;
@@ -320,78 +351,127 @@ main > * {
   background: linear-gradient(135deg, rgba(83, 225, 255, 0.95), rgba(255, 111, 145, 0.95));
 }
 
-.lever-panel {
+.joystick-panel {
   width: 100%;
-  display: grid;
-  gap: 0.3rem;
-  padding: 0.45rem 0.65rem 0.55rem;
-  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.65rem 0.6rem;
+  border-radius: 14px;
   background: rgba(2, 8, 23, 0.68);
   border: 1px solid rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(2px);
   box-sizing: border-box;
 }
 
-.lever-panel[hidden] {
+.joystick-panel[hidden] {
   display: none;
 }
 
-.lever-panel label {
-  font-size: 0.75rem;
-  font-weight: 600;
+.joystick-pad {
+  --joystick-size: 140px;
+  position: relative;
+  width: var(--joystick-size);
+  height: var(--joystick-size);
+  border-radius: 50%;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+
+.joystick-pad.is-active {
+  cursor: grabbing;
+}
+
+.joystick-pad.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.joystick-pad__base {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at center, rgba(83, 225, 255, 0.16), rgba(2, 8, 23, 0.55) 72%);
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  box-shadow: inset 0 0 22px rgba(0, 0, 0, 0.45);
+}
+
+.joystick-pad__crosshair {
+  position: absolute;
+  inset: 14%;
+  border-radius: 50%;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+}
+
+.joystick-pad__knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 36%;
+  height: 36%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #9af0ff, #53e1ff 55%, #2bb4d6);
+  border: 2px solid rgba(15, 23, 42, 0.85);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45);
+  transform: translate(-50%, -50%);
+  transition: transform 0.08s ease-out;
+  pointer-events: none;
+}
+
+.joystick-pad.is-active .joystick-pad__knob {
+  transition: none;
+}
+
+.joystick-pad__hint {
+  position: absolute;
+  left: 50%;
+  bottom: 9%;
+  transform: translateX(-50%);
+  font-size: 0.66rem;
   letter-spacing: 0.04em;
-  color: rgba(226, 232, 240, 0.9);
+  color: rgba(226, 232, 240, 0.7);
+  pointer-events: none;
+  white-space: nowrap;
+  transition: opacity 0.15s ease;
+}
+
+.joystick-pad.is-active .joystick-pad__hint,
+.joystick-pad.is-aimed .joystick-pad__hint {
+  opacity: 0;
+}
+
+.joystick-readout {
   display: flex;
-  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: rgba(226, 232, 240, 0.85);
+  font-variant-numeric: tabular-nums;
 }
 
-.lever-panel input[type='range'] {
-  width: 100%;
-  margin: 0;
-  accent-color: #53e1ff;
-}
-
-.lever-panel input[type='range']::-webkit-slider-runnable-track {
-  height: 0.38rem;
-}
-
-.lever-panel input[type='range']::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 1.02rem;
-  height: 1.02rem;
-  border-radius: 999px;
-  background: #53e1ff;
-  border: 2px solid rgba(15, 23, 42, 0.75);
-  margin-top: calc((0.38rem - 1.02rem) / 2);
-}
-
-.lever-panel input[type='range']::-moz-range-track {
-  height: 0.38rem;
-}
-
-.lever-panel input[type='range']::-moz-range-thumb {
-  width: 1.02rem;
-  height: 1.02rem;
-  border-radius: 999px;
-  background: #53e1ff;
-  border: 2px solid rgba(15, 23, 42, 0.75);
-}
-
-#lever-fire-btn {
-  margin-top: 0.35rem;
+#joystick-fire-btn {
   border: none;
-  border-radius: 8px;
-  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  padding: 0.55rem 2rem;
   font-weight: 700;
+  font-size: 0.95rem;
   color: #0b132b;
   background: linear-gradient(135deg, #53e1ff, #ff6f91);
   cursor: pointer;
+  box-shadow: 0 6px 16px rgba(83, 225, 255, 0.25);
 }
 
-#lever-fire-btn:disabled,
+#joystick-fire-btn:disabled,
 #fire-mode-toggle:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+  box-shadow: none;
 }
 
 .board-controls {
