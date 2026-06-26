@@ -35,6 +35,10 @@ const joystickPowerValue = document.getElementById('joystick-power') as HTMLSpan
 const joystickFireButton = document.getElementById('joystick-fire-btn') as HTMLButtonElement;
 const joystickCollapseButton = document.getElementById('joystick-collapse-btn') as HTMLButtonElement;
 const joystickReopenButton = document.getElementById('joystick-reopen-btn') as HTMLButtonElement;
+const joystickDirDecButton = document.getElementById('joystick-dir-dec') as HTMLButtonElement;
+const joystickDirIncButton = document.getElementById('joystick-dir-inc') as HTMLButtonElement;
+const joystickPowDecButton = document.getElementById('joystick-pow-dec') as HTMLButtonElement;
+const joystickPowIncButton = document.getElementById('joystick-pow-inc') as HTMLButtonElement;
 const ZOOM_STEP = 1.2;
 const DRAG_INPUT_MULTIPLIER = 1.35;
 // Rotating the landscape board into a portrait viewport. 90deg clockwise so the
@@ -42,6 +46,13 @@ const DRAG_INPUT_MULTIPLIER = 1.35;
 const BOARD_ROTATION_DEG = 90;
 // Joystick travel below this fraction of the pad radius is treated as "no aim".
 const JOYSTICK_DEADZONE = 0.08;
+// Once an aim is set, fine nudges can take power this low and still fire. The
+// archer projectile flies at full range for any power > 0; power only controls
+// how far the unit itself recoils, so a tiny value is a near-stationary shot.
+const MIN_FIRE_POWER = 0.01;
+// Fine-adjust step sizes (per tap; hold-to-repeat applies them rapidly).
+const JOYSTICK_ANGLE_STEP_DEG = 1;
+const JOYSTICK_POWER_STEP = 0.01;
 type FireControlMode = 'drag' | 'joystick';
 
 let currentMap = getMapById(DEFAULT_MAP_ID);
@@ -538,11 +549,43 @@ const resetJoystickAim = (): void => {
   updateJoystickKnobVisual();
 };
 
+// Fine-tune the retained aim. Rotating the knob direction keeps power fixed and
+// vice-versa, so the angle and power are independently adjustable — restoring
+// the precise low-power control the dual-lever used to give (e.g. archers).
+const nudgeJoystickAngle = (deltaDeg: number): void => {
+  if (!joystickScreenDir) {
+    return;
+  }
+  const rad = (deltaDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const { x, y } = joystickScreenDir;
+  const rx = x * cos - y * sin;
+  const ry = x * sin + y * cos;
+  const len = Math.hypot(rx, ry) || 1;
+  joystickScreenDir = { x: rx / len, y: ry / len };
+  joystickHasAim = joystickPower >= MIN_FIRE_POWER;
+  updateJoystickKnobVisual();
+  updateFireControlUi();
+  renderScene();
+};
+
+const nudgeJoystickPower = (delta: number): void => {
+  if (!joystickScreenDir) {
+    return;
+  }
+  joystickPower = Math.max(0, Math.min(1, joystickPower + delta));
+  joystickHasAim = joystickPower >= MIN_FIRE_POWER;
+  updateJoystickKnobVisual();
+  updateFireControlUi();
+  renderScene();
+};
+
 const getJoystickActionVector = (): Vector | null => {
   if (!engine.canPlayerAct()) {
     return null;
   }
-  if (!joystickHasAim || !joystickScreenDir || joystickPower < JOYSTICK_DEADZONE) {
+  if (!joystickHasAim || !joystickScreenDir || joystickPower < MIN_FIRE_POWER) {
     return null;
   }
   const activeUnit = getActiveUnit(currentState);
@@ -615,6 +658,12 @@ function updateFireControlUi(): void {
   fireModeToggle.disabled = currentMode === 'online' && onlineStatus !== 'matched';
   joystickPad.classList.toggle('is-disabled', !joystickMode || !canAct || onlineBlocked);
   joystickFireButton.disabled = !joystickMode || !actionReady || onlineBlocked;
+  // Fine nudges need an existing aim direction (set by a pull) to adjust.
+  const nudgeDisabled = !joystickMode || !canAct || onlineBlocked || joystickScreenDir === null;
+  joystickDirDecButton.disabled = nudgeDisabled;
+  joystickDirIncButton.disabled = nudgeDisabled;
+  joystickPowDecButton.disabled = nudgeDisabled;
+  joystickPowIncButton.disabled = nudgeDisabled;
   // Don't reflow mid-drag: the controls keep a stable size while aiming.
   if (isBoardFullscreen() && joystickPointerId === null) {
     updateFullscreenSizing();
@@ -1363,6 +1412,53 @@ joystickReopenButton.addEventListener('click', () => {
   updateJoystickKnobVisual();
   renderScene();
 });
+
+// Tap = one step; press-and-hold = rapid repeat after a short delay.
+const bindRepeatPress = (button: HTMLButtonElement, action: () => void): void => {
+  let holdTimeout: number | null = null;
+  let repeatTimer: number | null = null;
+  const stop = () => {
+    if (holdTimeout !== null) {
+      window.clearTimeout(holdTimeout);
+      holdTimeout = null;
+    }
+    if (repeatTimer !== null) {
+      window.clearInterval(repeatTimer);
+      repeatTimer = null;
+    }
+  };
+  button.addEventListener('pointerdown', (event) => {
+    if (button.disabled) {
+      return;
+    }
+    event.preventDefault();
+    action();
+    holdTimeout = window.setTimeout(() => {
+      repeatTimer = window.setInterval(() => {
+        if (button.disabled) {
+          stop();
+          return;
+        }
+        action();
+      }, 70);
+    }, 300);
+  });
+  button.addEventListener('pointerup', stop);
+  button.addEventListener('pointercancel', stop);
+  button.addEventListener('pointerleave', stop);
+  // Keyboard activation (Enter/Space) reports a click with detail 0; pointer
+  // taps already ran via pointerdown, so only act on the keyboard case here.
+  button.addEventListener('click', (event) => {
+    if (event.detail === 0 && !button.disabled) {
+      action();
+    }
+  });
+};
+
+bindRepeatPress(joystickDirDecButton, () => nudgeJoystickAngle(-JOYSTICK_ANGLE_STEP_DEG));
+bindRepeatPress(joystickDirIncButton, () => nudgeJoystickAngle(JOYSTICK_ANGLE_STEP_DEG));
+bindRepeatPress(joystickPowDecButton, () => nudgeJoystickPower(-JOYSTICK_POWER_STEP));
+bindRepeatPress(joystickPowIncButton, () => nudgeJoystickPower(JOYSTICK_POWER_STEP));
 
 function toWorldPoint(event: PointerEvent | WheelEvent): Vector {
   return toWorldPointFromClient(event.clientX, event.clientY);

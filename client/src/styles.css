@@ -519,6 +519,46 @@ body.board-fullscreen-active .joystick-panel {
   font-variant-numeric: tabular-nums;
 }
 
+.joystick-fine {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.joystick-fine__label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(226, 232, 240, 0.75);
+}
+
+.joystick-fine__label:not(:first-child) {
+  margin-left: 0.35rem;
+}
+
+.joystick-fine__btn {
+  min-width: 1.85rem;
+  padding: 0.26rem 0.4rem;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 7px;
+  background: rgba(2, 8, 23, 0.82);
+  color: #e2e8f0;
+  font-weight: 700;
+  font-size: 0.82rem;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.joystick-fine__btn:active {
+  background: rgba(83, 225, 255, 0.25);
+}
+
+.joystick-fine__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 #joystick-fire-btn {
   border: none;
   border-radius: 999px;
