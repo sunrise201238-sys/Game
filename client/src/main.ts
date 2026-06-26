@@ -32,6 +32,7 @@ const joystickKnob = document.getElementById('joystick-knob') as HTMLDivElement;
 const joystickDirectionValue = document.getElementById('joystick-direction') as HTMLSpanElement;
 const joystickPowerValue = document.getElementById('joystick-power') as HTMLSpanElement;
 const joystickFireButton = document.getElementById('joystick-fire-btn') as HTMLButtonElement;
+const joystickPadToggle = document.getElementById('joystick-pad-toggle') as HTMLButtonElement;
 const joystickDirDecButton = document.getElementById('joystick-dir-dec') as HTMLButtonElement;
 const joystickDirIncButton = document.getElementById('joystick-dir-inc') as HTMLButtonElement;
 const joystickPowDecButton = document.getElementById('joystick-pow-dec') as HTMLButtonElement;
@@ -64,6 +65,8 @@ let lastReportedTurn = -1;
 let onlineAwaitingSyncApply = false;
 let pendingOnlineStateSync: { turn: number; state: GameState } | null = null;
 let fireControlMode: FireControlMode = 'drag';
+// Collapses only the joystick pad; the readout, fine-tune nudges and Fire stay.
+let joystickPadCollapsed = false;
 let boardRotated = false;
 // Joystick aim state. joystickScreenDir is a normalized direction in SCREEN
 // space (independent of board rotation); it is converted to a world vector when
@@ -653,6 +656,8 @@ const applyAimResetForTurn = (state: GameState): void => {
   }
   lastAimResetKey = turnKey;
   resetJoystickAim();
+  // Each new turn starts with the pad available for a fresh gross aim.
+  joystickPadCollapsed = false;
 };
 
 function updateFireControlUi(): void {
@@ -661,6 +666,10 @@ function updateFireControlUi(): void {
   joystickPanel.hidden = !joystickMode;
   fireModeToggle.textContent = joystickMode ? 'Mode: Joystick' : 'Mode: Drag';
   fireModeToggle.setAttribute('aria-pressed', joystickMode ? 'true' : 'false');
+  joystickPanel.classList.toggle('pad-collapsed', joystickPadCollapsed);
+  joystickPadToggle.textContent = joystickPadCollapsed ? 'Show pad ⌃' : 'Hide pad ⌄';
+  joystickPadToggle.setAttribute('aria-expanded', joystickPadCollapsed ? 'false' : 'true');
+  joystickPadToggle.setAttribute('aria-label', joystickPadCollapsed ? 'Show joystick pad' : 'Hide joystick pad');
   // Show the resulting launch direction (opposite of the pulled-back knob).
   let launchAngle = 0;
   if (joystickScreenDir) {
@@ -1403,9 +1412,17 @@ zoomResetButton.addEventListener('click', () => {
 
 fireModeToggle.addEventListener('click', () => {
   fireControlMode = fireControlMode === 'drag' ? 'joystick' : 'drag';
+  joystickPadCollapsed = false;
   cancelActiveDrag();
   resetJoystickAim();
   updateFireControlUi();
+  renderScene();
+});
+
+joystickPadToggle.addEventListener('click', () => {
+  joystickPadCollapsed = !joystickPadCollapsed;
+  updateFireControlUi();
+  updateJoystickKnobVisual();
   renderScene();
 });
 
