@@ -47,7 +47,9 @@
               <canvas id="gameCanvas" width="960" height="540"></canvas>
             </div>
             <div id="fire-controls" class="fire-controls" role="region" aria-label="Fire controls">
-              <button id="fire-mode-toggle" type="button" aria-pressed="false">Mode: Drag</button>
+              <!-- Drag mode is retired; Joystick is the only fire-control mode. The
+                   toggle is kept hidden (and the drag-mode code left intact). -->
+              <button id="fire-mode-toggle" type="button" aria-pressed="true" hidden>Mode: Joystick</button>
               <div id="joystick-bar" class="joystick-bar" hidden>
                 <div class="joystick-readout" aria-hidden="true">
                   <span>Dir <span id="joystick-direction">0°</span></span>

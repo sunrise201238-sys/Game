@@ -330,8 +330,9 @@ body.board-fullscreen-active .joystick-popup {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
   width: 100%;
+  touch-action: manipulation;
 }
 
 .joystick-bar[hidden] {
@@ -346,6 +347,8 @@ body.board-fullscreen-active .joystick-popup {
   align-items: stretch;
   width: min(100%, var(--board-fullscreen-width, 100%));
   box-sizing: border-box;
+  /* Stop double-tap-to-zoom while jabbing the fine-tune controls. */
+  touch-action: manipulation;
 }
 
 .fire-controls > * {
@@ -472,46 +475,50 @@ body.board-fullscreen-active .joystick-popup {
 .joystick-readout {
   display: flex;
   gap: 1rem;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 600;
   letter-spacing: 0.03em;
   color: rgba(226, 232, 240, 0.85);
   font-variant-numeric: tabular-nums;
+  touch-action: manipulation;
 }
 
 .joystick-fine {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.45rem;
+  touch-action: manipulation;
 }
 
 .joystick-fine__label {
-  font-size: 0.68rem;
+  font-size: 0.74rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: rgba(226, 232, 240, 0.75);
+  color: rgba(226, 232, 240, 0.78);
 }
 
 .joystick-fine__label:not(:first-child) {
-  margin-left: 0.35rem;
+  margin-left: 0.5rem;
 }
 
 .joystick-fine__btn {
-  min-width: 1.85rem;
-  padding: 0.26rem 0.4rem;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 7px;
-  background: rgba(2, 8, 23, 0.82);
+  min-width: 2.9rem;
+  min-height: 2.6rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 10px;
+  background: rgba(2, 8, 23, 0.85);
   color: #e2e8f0;
   font-weight: 700;
-  font-size: 0.82rem;
+  font-size: 1.1rem;
   line-height: 1;
   cursor: pointer;
+  /* manipulation removes the 300ms double-tap-to-zoom on these controls */
   touch-action: manipulation;
 }
 
 .joystick-fine__btn:active {
-  background: rgba(83, 225, 255, 0.25);
+  background: rgba(83, 225, 255, 0.3);
 }
 
 .joystick-fine__btn:disabled {
@@ -522,13 +529,15 @@ body.board-fullscreen-active .joystick-popup {
 #joystick-fire-btn {
   border: none;
   border-radius: 999px;
-  padding: 0.55rem 2rem;
+  padding: 0.65rem 2.4rem;
+  min-height: 2.6rem;
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   color: #0b132b;
   background: linear-gradient(135deg, #53e1ff, #ff6f91);
   cursor: pointer;
   box-shadow: 0 6px 16px rgba(83, 225, 255, 0.25);
+  touch-action: manipulation;
 }
 
 #joystick-fire-btn:disabled,

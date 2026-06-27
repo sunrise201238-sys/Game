@@ -52,6 +52,9 @@ const MIN_FIRE_POWER = 0.01;
 // Fine-adjust step sizes (per tap; hold-to-repeat applies them rapidly).
 const JOYSTICK_ANGLE_STEP_DEG = 1;
 const JOYSTICK_POWER_STEP = 0.01;
+// When the direction is nudged while power is still zero, give power this small
+// starting value so the aim line "wakes up" (the two halves can't both be 0).
+const JOYSTICK_WAKE_POWER = 0.1;
 type FireControlMode = 'drag' | 'joystick';
 
 let currentMap = getMapById(DEFAULT_MAP_ID);
@@ -65,7 +68,9 @@ let onlineReadyTurn = -1;
 let lastReportedTurn = -1;
 let onlineAwaitingSyncApply = false;
 let pendingOnlineStateSync: { turn: number; state: GameState } | null = null;
-let fireControlMode: FireControlMode = 'drag';
+// Joystick is the only fire-control mode now; the drag-mode code paths remain in
+// place but are unreachable (kept for reference rather than deleted).
+let fireControlMode: FireControlMode = 'joystick';
 let boardRotated = false;
 // Joystick aim state. joystickScreenDir is a normalized direction in SCREEN
 // space (independent of board rotation); it is converted to a world vector when
@@ -602,9 +607,11 @@ const defaultAimScreenDir = (): Vector | null => {
     target = { x: currentMap.width / 2, y: currentMap.height / 2 };
   }
   const launch = { x: target.x - activeUnit.position.x, y: target.y - activeUnit.position.y };
-  const len = Math.hypot(launch.x, launch.y) || 1;
+  const len = Math.hypot(launch.x, launch.y);
   // launch = -rotateScreenVectorToWorld(screenDir), so invert to get screenDir.
-  const wanted = { x: -launch.x / len, y: -launch.y / len };
+  // Fall back to a fixed non-zero pull if the target coincides with the unit, so
+  // the seeded direction is never the (unrotatable, zero-velocity) zero vector.
+  const wanted = len > 1e-3 ? { x: -launch.x / len, y: -launch.y / len } : { x: 0, y: 1 };
   return boardRotated ? { x: -wanted.y, y: wanted.x } : wanted;
 };
 
@@ -627,6 +634,11 @@ const ensureJoystickDirection = (): boolean => {
 const nudgeJoystickAngle = (deltaDeg: number): void => {
   if (!ensureJoystickDirection() || !joystickScreenDir) {
     return;
+  }
+  // Nudging direction while power is ~0 wakes the aim with a small power so the
+  // line shows (otherwise a direction with zero power is still no aim).
+  if (joystickPower < MIN_FIRE_POWER) {
+    joystickPower = JOYSTICK_WAKE_POWER;
   }
   const rad = (deltaDeg * Math.PI) / 180;
   const cos = Math.cos(rad);
@@ -730,10 +742,9 @@ function updateFireControlUi(): void {
   fireModeToggle.disabled = currentMode === 'online' && onlineStatus !== 'matched';
   joystickPad.classList.toggle('is-disabled', !joystickMode || !canAct || onlineBlocked);
   joystickFireButton.disabled = !joystickMode || !actionReady || onlineBlocked;
-  // Fine nudges work whenever the pad is open or an aim already exists; tapping
-  // a power button then seeds a default direction so it can wake the aim line.
-  const nudgeDisabled =
-    !joystickMode || !canAct || onlineBlocked || (joystickScreenDir === null && !joystickPopupOpen);
+  // Fine nudges are usable any time it's your turn — they seed a default aim
+  // (direction toward the enemy + a small power) so the line activates on its own.
+  const nudgeDisabled = !joystickMode || !canAct || onlineBlocked;
   joystickDirDecButton.disabled = nudgeDisabled;
   joystickDirIncButton.disabled = nudgeDisabled;
   joystickPowDecButton.disabled = nudgeDisabled;
