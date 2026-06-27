@@ -395,6 +395,28 @@ body.board-fullscreen-active .joystick-popup {
   display: none;
 }
 
+/* Grip at the top of the popup — drag it to move the whole popup around. */
+.joystick-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 1.5rem;
+  margin-bottom: 0.1rem;
+  color: rgba(226, 232, 240, 0.6);
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.joystick-drag-handle:hover,
+.joystick-drag-handle:focus-visible,
+.joystick-drag-handle.is-dragging {
+  color: #53e1ff;
+  outline: none;
+}
+
 
 .joystick-pad {
   --joystick-size: 140px;

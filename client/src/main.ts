@@ -29,6 +29,7 @@ const fireModeToggle = document.getElementById('fire-mode-toggle') as HTMLButton
 const fireControls = document.getElementById('fire-controls') as HTMLDivElement;
 const joystickPanel = document.getElementById('joystick-panel') as HTMLDivElement;
 const joystickBar = document.getElementById('joystick-bar') as HTMLDivElement;
+const joystickDragHandle = document.getElementById('joystick-drag-handle') as HTMLDivElement;
 const joystickPad = document.getElementById('joystick-pad') as HTMLDivElement;
 const joystickKnob = document.getElementById('joystick-knob') as HTMLDivElement;
 const joystickDirectionValue = document.getElementById('joystick-direction') as HTMLSpanElement;
@@ -240,6 +241,11 @@ let lastAimResetKey: string | null = null;
 let joystickPopupOpen = false;
 let dotTapPointerId: number | null = null;
 let dotTapStartClient: { x: number; y: number } | null = null;
+// When the player drags the popup by its handle, remember that position (kept
+// within the turn) so auto-placement doesn't override it.
+let joystickManualPos: { left: number; top: number } | null = null;
+let popupDragPointerId: number | null = null;
+let popupDragStart: { pointerX: number; pointerY: number; left: number; top: number } | null = null;
 const DOT_TAP_SCREEN_PADDING = 22;
 const DOT_TAP_MOVE_THRESHOLD = 8;
 type PointerPosition = { clientX: number; clientY: number };
@@ -714,9 +720,11 @@ const applyAimResetForTurn = (state: GameState): void => {
   }
   lastAimResetKey = turnKey;
   resetJoystickAim();
-  // Each new turn starts with the popup closed; tap the new active dot to aim.
+  // Each new turn starts with the popup closed and auto-placement restored;
+  // tap the new active dot to aim.
   joystickPopupOpen = false;
   joystickPanel.hidden = true;
+  joystickManualPos = null;
 };
 
 function updateFireControlUi(): void {
@@ -893,6 +901,17 @@ const positionJoystickPopup = (): void => {
   const maxX = Math.max(minX, vLeft + vw - pw - margin);
   const minY = vTop + margin;
   const maxY = Math.max(minY, vTop + vh - ph - margin);
+
+  // If the player dragged the popup, honour that position (just keep it
+  // on-screen) instead of re-running the automatic placement.
+  if (joystickManualPos) {
+    const left = Math.min(Math.max(joystickManualPos.left, minX), maxX);
+    const top = Math.min(Math.max(joystickManualPos.top, minY), maxY);
+    joystickManualPos = { left, top };
+    joystickPanel.style.left = `${left}px`;
+    joystickPanel.style.top = `${top}px`;
+    return;
+  }
 
   const dot = worldToClient(activeUnit.position);
   const view = renderer.getViewSize();
@@ -1669,6 +1688,64 @@ joystickPad.addEventListener('lostpointercapture', onJoystickLostCapture);
 joystickFireButton.addEventListener('click', () => {
   submitJoystickAction();
 });
+
+// Drag the handle to move the whole popup; the chosen spot sticks for the turn.
+const onPopupDragDown = (event: PointerEvent): void => {
+  event.preventDefault();
+  const rect = joystickPanel.getBoundingClientRect();
+  popupDragPointerId = event.pointerId;
+  popupDragStart = { pointerX: event.clientX, pointerY: event.clientY, left: rect.left, top: rect.top };
+  joystickDragHandle.classList.add('is-dragging');
+  try {
+    joystickDragHandle.setPointerCapture(event.pointerId);
+  } catch (error) {
+    // ignore capture errors
+  }
+};
+
+const onPopupDragMove = (event: PointerEvent): void => {
+  if (popupDragPointerId === null || event.pointerId !== popupDragPointerId || !popupDragStart) {
+    return;
+  }
+  event.preventDefault();
+  const pw = joystickPanel.offsetWidth;
+  const ph = joystickPanel.offsetHeight;
+  const vv = window.visualViewport;
+  const vLeft = vv?.offsetLeft ?? 0;
+  const vTop = vv?.offsetTop ?? 0;
+  const vw = vv?.width ?? window.innerWidth;
+  const vh = vv?.height ?? window.innerHeight;
+  const margin = 8;
+  const minX = vLeft + margin;
+  const maxX = Math.max(minX, vLeft + vw - pw - margin);
+  const minY = vTop + margin;
+  const maxY = Math.max(minY, vTop + vh - ph - margin);
+  const left = Math.min(Math.max(popupDragStart.left + (event.clientX - popupDragStart.pointerX), minX), maxX);
+  const top = Math.min(Math.max(popupDragStart.top + (event.clientY - popupDragStart.pointerY), minY), maxY);
+  joystickManualPos = { left, top };
+  joystickPanel.style.left = `${left}px`;
+  joystickPanel.style.top = `${top}px`;
+};
+
+const endPopupDrag = (event: PointerEvent): void => {
+  if (popupDragPointerId === null || event.pointerId !== popupDragPointerId) {
+    return;
+  }
+  try {
+    joystickDragHandle.releasePointerCapture(event.pointerId);
+  } catch (error) {
+    // ignore release errors
+  }
+  popupDragPointerId = null;
+  popupDragStart = null;
+  joystickDragHandle.classList.remove('is-dragging');
+};
+
+joystickDragHandle.addEventListener('pointerdown', onPopupDragDown);
+joystickDragHandle.addEventListener('pointermove', onPopupDragMove);
+joystickDragHandle.addEventListener('pointerup', endPopupDrag);
+joystickDragHandle.addEventListener('pointercancel', endPopupDrag);
+joystickDragHandle.addEventListener('lostpointercapture', endPopupDrag);
 // Tap = one step; press-and-hold = rapid repeat after a short delay.
 const bindRepeatPress = (button: HTMLButtonElement, action: () => void): void => {
   let holdTimeout: number | null = null;
