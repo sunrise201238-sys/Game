@@ -73,13 +73,17 @@ let pendingOnlineStateSync: { turn: number; state: GameState } | null = null;
 // place but are unreachable (kept for reference rather than deleted).
 let fireControlMode: FireControlMode = 'joystick';
 let boardRotated = false;
-// Joystick aim state. joystickScreenDir is a normalized direction in SCREEN
-// space (independent of board rotation); it is converted to a world vector when
-// firing/previewing so it stays intuitive even when the board is rotated.
-let joystickScreenDir: Vector | null = null;
+// Aim state. aimDir is a normalized WORLD-space launch direction (toward the
+// target) and joystickPower is 0..1 of the unit's maxPower. World-space keeps
+// the aim stable if the board rotates mid-aim.
+let aimDir: Vector | null = null;
 let joystickPower = 0;
 let joystickHasAim = false;
 let joystickPointerId: number | null = null;
+// Direct drag-to-aim: grab the active dot and drag; the dot lands at the finger.
+let isAiming = false;
+let aimPointerId: number | null = null;
+const AIM_GRAB_SCREEN_PADDING = 26;
 
 for (const map of MAPS) {
   const option = document.createElement('option');
@@ -289,16 +293,13 @@ const renderScene = () => {
     localTeam = currentState.activeTeam;
   }
   renderer.setPerspectiveTeam(localTeam);
-  // The aim line persists in JS mode even after the pad is dismissed, so the
-  // player can review it while fine-tuning; the magnifier stays tied to the pad.
-  const aimPreview = fireControlMode === 'joystick' ? getAimPreviewLine() : null;
-  const previewOrigin = isDragging ? dragOrigin : aimPreview?.origin ?? null;
-  const previewCurrent = isDragging ? dragCurrent : aimPreview?.current ?? null;
-  const showLoupe = Boolean(previewOrigin && previewCurrent) && (isDragging || joystickPopupOpen);
+  // Direct aim: the line is drawn straight to the predicted landing (skip the
+  // slingshot curve) so the dot stops under the pointer. Magnifier removed.
+  const aimPreview = getAimPreviewLine();
   renderer.render(currentState, {
-    dragOrigin: previewOrigin,
-    dragCurrent: previewCurrent,
-    showLoupe,
+    dragOrigin: aimPreview?.origin ?? null,
+    dragCurrent: aimPreview?.current ?? null,
+    skipAimCurve: true,
   });
 };
 
@@ -579,25 +580,25 @@ const updateJoystickKnobVisual = (): void => {
   const radius = getJoystickRadius();
   let knobX = 0;
   let knobY = 0;
-  if (joystickScreenDir && joystickPower > 0 && radius > 0) {
+  if (aimDir && joystickPower > 0 && radius > 0) {
     const travel = Math.min(1, joystickPower) * radius;
-    knobX = joystickScreenDir.x * travel;
-    knobY = joystickScreenDir.y * travel;
+    knobX = aimDir.x * travel;
+    knobY = aimDir.y * travel;
   }
   joystickKnob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
   joystickPad.classList.toggle('is-aimed', joystickHasAim && joystickPower >= JOYSTICK_DEADZONE);
 };
 
 const resetJoystickAim = (): void => {
-  joystickScreenDir = null;
+  aimDir = null;
   joystickPower = 0;
   joystickHasAim = false;
   updateJoystickKnobVisual();
 };
 
-// A sensible starting aim (screen-space pull direction) when the player uses the
-// fine-tune buttons before pulling the pad: aim the slingshot toward the enemy.
-const defaultAimScreenDir = (): Vector | null => {
+// A sensible starting aim (world-space launch direction) when the player uses
+// the fine-tune buttons before dragging: aim toward the enemy.
+const defaultAimDirWorld = (): Vector | null => {
   const activeUnit = getActiveUnit(currentState);
   if (!activeUnit) {
     return null;
@@ -614,23 +615,20 @@ const defaultAimScreenDir = (): Vector | null => {
   }
   const launch = { x: target.x - activeUnit.position.x, y: target.y - activeUnit.position.y };
   const len = Math.hypot(launch.x, launch.y);
-  // launch = -rotateScreenVectorToWorld(screenDir), so invert to get screenDir.
-  // Fall back to a fixed non-zero pull if the target coincides with the unit, so
-  // the seeded direction is never the (unrotatable, zero-velocity) zero vector.
-  const wanted = len > 1e-3 ? { x: -launch.x / len, y: -launch.y / len } : { x: 0, y: 1 };
-  return boardRotated ? { x: -wanted.y, y: wanted.x } : wanted;
+  // Fall back to a fixed non-zero direction if the target coincides with the unit.
+  return len > 1e-3 ? { x: launch.x / len, y: launch.y / len } : { x: 0, y: -1 };
 };
 
 // Ensure a direction exists so the fine-tune buttons can wake the aim from zero.
 const ensureJoystickDirection = (): boolean => {
-  if (joystickScreenDir) {
+  if (aimDir) {
     return true;
   }
-  const dir = defaultAimScreenDir();
+  const dir = defaultAimDirWorld();
   if (!dir) {
     return false;
   }
-  joystickScreenDir = dir;
+  aimDir = dir;
   return true;
 };
 
@@ -638,7 +636,7 @@ const ensureJoystickDirection = (): boolean => {
 // vice-versa, so the angle and power are independently adjustable — restoring
 // the precise low-power control the dual-lever used to give (e.g. archers).
 const nudgeJoystickAngle = (deltaDeg: number): void => {
-  if (!ensureJoystickDirection() || !joystickScreenDir) {
+  if (!ensureJoystickDirection() || !aimDir) {
     return;
   }
   // Nudging direction while power is ~0 wakes the aim with a small power so the
@@ -649,11 +647,11 @@ const nudgeJoystickAngle = (deltaDeg: number): void => {
   const rad = (deltaDeg * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
-  const { x, y } = joystickScreenDir;
+  const { x, y } = aimDir;
   const rx = x * cos - y * sin;
   const ry = x * sin + y * cos;
   const len = Math.hypot(rx, ry) || 1;
-  joystickScreenDir = { x: rx / len, y: ry / len };
+  aimDir = { x: rx / len, y: ry / len };
   joystickHasAim = joystickPower >= MIN_FIRE_POWER;
   updateJoystickKnobVisual();
   updateFireControlUi();
@@ -675,19 +673,18 @@ const getJoystickActionVector = (): Vector | null => {
   if (!engine.canPlayerAct()) {
     return null;
   }
-  if (!joystickHasAim || !joystickScreenDir || joystickPower < MIN_FIRE_POWER) {
+  if (!joystickHasAim || !aimDir || joystickPower < MIN_FIRE_POWER) {
     return null;
   }
   const activeUnit = getActiveUnit(currentState);
   if (!activeUnit) {
     return null;
   }
-  const worldDir = rotateScreenVectorToWorld(joystickScreenDir);
   const magnitude = activeUnit.def.maxPower * Math.min(1, joystickPower);
-  // Slingshot semantics: pull the knob back, launch the opposite way.
+  // Direct aim: launch straight along the world-space aim direction.
   return {
-    x: -worldDir.x * magnitude,
-    y: -worldDir.y * magnitude,
+    x: aimDir.x * magnitude,
+    y: aimDir.y * magnitude,
   };
 };
 
@@ -707,6 +704,53 @@ const getAimPreviewLine = (): { origin: Vector; current: Vector } | null => {
       y: activeUnit.position.y - vector.y,
     },
   };
+};
+
+// Direct aim: set the launch so the active unit's predicted landing is exactly
+// the pointer position (capped at the unit's maximum reach). Power is inverted
+// from the travel-distance model so the dot stops under the finger.
+const updateDirectAim = (event: PointerEvent): void => {
+  const activeUnit = getActiveUnit(currentState);
+  if (!activeUnit) {
+    return;
+  }
+  const target = toWorldPoint(event);
+  const dx = target.x - activeUnit.position.x;
+  const dy = target.y - activeUnit.position.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 1e-3 || activeUnit.def.maxPower <= 0) {
+    aimDir = null;
+    joystickPower = 0;
+    joystickHasAim = false;
+  } else {
+    aimDir = { x: dx / dist, y: dy / dist };
+    const maxReach = renderer.estimateTravelDistance(activeUnit.def.maxPower);
+    const cappedDist = Math.min(dist, maxReach);
+    const power = renderer.powerForTravelDistance(cappedDist, activeUnit.def.maxPower);
+    joystickPower = Math.min(1, power / activeUnit.def.maxPower);
+    joystickHasAim = joystickPower >= MIN_FIRE_POWER;
+  }
+  updateFireControlUi();
+  renderScene();
+};
+
+const endAiming = (): void => {
+  if (!isAiming) {
+    return;
+  }
+  const pointerId = aimPointerId;
+  isAiming = false;
+  aimPointerId = null;
+  if (pointerId !== null) {
+    try {
+      canvas.releasePointerCapture(pointerId);
+    } catch (error) {
+      // ignore release errors
+    }
+  }
+  // Aim is retained on release; fine-tune / fire from the permanent bar.
+  updateFireControlUi();
+  renderScene();
 };
 
 const applyAimResetForTurn = (state: GameState): void => {
@@ -737,10 +781,10 @@ function updateFireControlUi(): void {
   // always visible in JS mode. Only the pad floats in the anchored popup.
   joystickBar.hidden = !joystickMode;
   joystickPanel.hidden = !(joystickMode && joystickPopupOpen);
-  // Show the resulting launch direction (opposite of the pulled-back knob).
+  // Show the launch direction (where the dot will travel).
   let launchAngle = 0;
-  if (joystickScreenDir) {
-    const deg = (Math.atan2(-joystickScreenDir.y, -joystickScreenDir.x) * 180) / Math.PI;
+  if (aimDir) {
+    const deg = (Math.atan2(aimDir.y, aimDir.x) * 180) / Math.PI;
     launchAngle = ((Math.round(deg) % 360) + 360) % 360;
   }
   joystickDirectionValue.textContent = `${launchAngle}°`;
@@ -772,11 +816,11 @@ const updateJoystickFromPointer = (event: PointerEvent): void => {
   const dist = Math.hypot(dx, dy);
   const radius = getJoystickRadius();
   if (dist < 1 || radius <= 0) {
-    joystickScreenDir = null;
+    aimDir = null;
     joystickPower = 0;
     joystickHasAim = false;
   } else {
-    joystickScreenDir = { x: dx / dist, y: dy / dist };
+    aimDir = { x: dx / dist, y: dy / dist };
     joystickPower = Math.min(1, dist / radius);
     joystickHasAim = joystickPower >= JOYSTICK_DEADZONE;
   }
@@ -866,12 +910,14 @@ const submitJoystickAction = (): void => {
     refreshOnlineReadyState();
     client.submitAction(action, team);
     resetJoystickAim();
-    closeJoystickPopup();
+    updateFireControlUi();
+    renderScene();
     return;
   }
   engine.beginPlayerAction(actionVector);
   resetJoystickAim();
-  closeJoystickPopup();
+  updateFireControlUi();
+  renderScene();
 };
 
 // Place the popup beside the active dot, preferring open space: try several
@@ -1288,6 +1334,10 @@ const beginPinchGesture = () => {
   }
   stopPan();
   cancelActiveDrag();
+  if (isAiming) {
+    // A second finger switches to pinch; keep the aim set so far.
+    endAiming();
+  }
   const center = {
     x: (firstPosition.clientX + secondPosition.clientX) / 2,
     y: (firstPosition.clientY + secondPosition.clientY) / 2,
@@ -1459,51 +1509,32 @@ canvas.addEventListener('pointerdown', (event) => {
   if (event.button !== 0) {
     return;
   }
-  if (fireControlMode === 'joystick') {
-    event.preventDefault();
-    if (joystickPopupOpen) {
-      // A tap anywhere on the board closes the popup; a drag still pans.
-      closeJoystickPopup();
-      beginPan(event);
-      return;
-    }
-    // Tapping the active dot (with a forgiving hit area) opens the popup beside
-    // it. Tracked through the pan gesture so a drag pans instead of opening.
-    const activeUnit = engine.canPlayerAct() ? getActiveUnit(currentState) : null;
-    if (activeUnit) {
-      const dotClient = worldToClient(activeUnit.position);
-      const rect = canvas.getBoundingClientRect();
-      const view = renderer.getViewSize();
-      const scale = (boardRotated ? rect.height : rect.width) / Math.max(1, view.x);
-      const dotScreenRadius = activeUnit.def.radius * scale;
-      const dScreen = Math.hypot(event.clientX - dotClient.x, event.clientY - dotClient.y);
-      if (dScreen <= dotScreenRadius + DOT_TAP_SCREEN_PADDING) {
-        dotTapPointerId = event.pointerId;
-        dotTapStartClient = { x: event.clientX, y: event.clientY };
-      }
-    }
-    beginPan(event);
-    return;
-  }
 
+  // Direct aim: grab the active dot and drag — the dot's predicted landing
+  // follows your finger. Dragging empty space pans; two fingers pinch-zoom.
   if (currentMode === 'online' && onlinePendingAction) {
     event.preventDefault();
     return;
   }
-
-  const pointer = toWorldPoint(event);
   const canAct = engine.canPlayerAct();
-  const activeUnit = canAct ? getActiveUnit(currentState) : null;
-  if (canAct && activeUnit) {
-    const distanceToUnit = Math.hypot(pointer.x - activeUnit.position.x, pointer.y - activeUnit.position.y);
-    if (distanceToUnit <= activeUnit.def.radius + 12) {
-      isDragging = true;
-      dragOrigin = { ...activeUnit.position };
-      dragCurrent = { ...dragOrigin };
-      dragPointerId = event.pointerId;
-      dragVector = { x: 0, y: 0 };
-      canvas.setPointerCapture(event.pointerId);
-      renderScene();
+  const aimUnit = canAct ? getActiveUnit(currentState) : null;
+  if (aimUnit) {
+    const dotClient = worldToClient(aimUnit.position);
+    const rect = canvas.getBoundingClientRect();
+    const view = renderer.getViewSize();
+    const scale = (boardRotated ? rect.height : rect.width) / Math.max(1, view.x);
+    const grabRadius = aimUnit.def.radius * scale + AIM_GRAB_SCREEN_PADDING;
+    const dScreen = Math.hypot(event.clientX - dotClient.x, event.clientY - dotClient.y);
+    if (dScreen <= grabRadius) {
+      isAiming = true;
+      aimPointerId = event.pointerId;
+      try {
+        canvas.setPointerCapture(event.pointerId);
+      } catch (error) {
+        // ignore capture errors
+      }
+      event.preventDefault();
+      // Aim updates on move; a tap without moving keeps the current aim.
       return;
     }
   }
@@ -1523,6 +1554,11 @@ canvas.addEventListener('pointermove', (event) => {
     if (isBoardFullscreen()) {
       activeTouchPointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
     }
+  }
+  if (isAiming && event.pointerId === aimPointerId) {
+    event.preventDefault();
+    updateDirectAim(event);
+    return;
   }
   if (isPanning && event.pointerId === panPointerId) {
     updatePanFromPointer(event);
@@ -1584,18 +1620,12 @@ canvas.addEventListener('pointerup', (event) => {
       return;
     }
   }
+  if (isAiming && event.pointerId === aimPointerId) {
+    endAiming();
+    return;
+  }
   if (isPanning && event.pointerId === panPointerId) {
-    const openFromTap =
-      dotTapPointerId === event.pointerId &&
-      dotTapStartClient !== null &&
-      Math.hypot(event.clientX - dotTapStartClient.x, event.clientY - dotTapStartClient.y) <
-        DOT_TAP_MOVE_THRESHOLD;
-    dotTapPointerId = null;
-    dotTapStartClient = null;
     stopPan();
-    if (openFromTap) {
-      openJoystickPopup();
-    }
     return;
   }
   endDrag(event);
@@ -1612,9 +1642,9 @@ canvas.addEventListener('pointercancel', (event) => {
       return;
     }
   }
-  if (dotTapPointerId === event.pointerId) {
-    dotTapPointerId = null;
-    dotTapStartClient = null;
+  if (isAiming && event.pointerId === aimPointerId) {
+    endAiming();
+    return;
   }
   if (isPanning && event.pointerId === panPointerId) {
     stopPan();

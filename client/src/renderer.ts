@@ -93,6 +93,9 @@ interface RenderOptions {
   dragOrigin?: Vector | null;
   dragCurrent?: Vector | null;
   showLoupe?: boolean;
+  // Direct aim: draw the predicted landing straight from the launch power
+  // (no slingshot aim curve) so the dot lands exactly under the pointer.
+  skipAimCurve?: boolean;
 }
 
 const LOUPE_CSS_RADIUS = 58;
@@ -731,7 +734,9 @@ export class Renderer {
       aimCurveExponent === 1 ? normalizedPower : Math.pow(normalizedPower, Math.max(aimCurveExponent, 1e-3));
     const smoothingFactor = aimCurveSmoothing > 0 ? 1 : 0;
     const smoothedPower = curvedPower + smoothingFactor * (normalizedPower - curvedPower);
-    const clampedPower = smoothedPower * maxPower;
+    // Direct aim bypasses the slingshot curve so the predicted landing equals
+    // the raw launch power (and thus the pointer position).
+    const clampedPower = options.skipAimCurve ? basePower : smoothedPower * maxPower;
     const projectileSpec = activeUnit.def.projectile;
     const movementDistance = Math.min(
       this.estimateUnitTravelDistance(clampedPower),
@@ -851,6 +856,34 @@ export class Renderer {
       ctx.restore();
     }
     ctx.restore();
+  }
+
+  // Public: how far the active unit would travel for a given launch power.
+  estimateTravelDistance(power: number): number {
+    return this.estimateUnitTravelDistance(power);
+  }
+
+  // Public: invert the travel model — the launch power needed to stop at a given
+  // distance (used so a directly-aimed dot lands under the pointer). Monotonic,
+  // so a short binary search suffices.
+  powerForTravelDistance(distance: number, maxPower: number): number {
+    if (distance <= 0 || maxPower <= 0) {
+      return 0;
+    }
+    if (distance >= this.estimateUnitTravelDistance(maxPower)) {
+      return maxPower;
+    }
+    let lo = 0;
+    let hi = maxPower;
+    for (let i = 0; i < 24; i += 1) {
+      const mid = (lo + hi) / 2;
+      if (this.estimateUnitTravelDistance(mid) < distance) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    return (lo + hi) / 2;
   }
 
   private estimateUnitTravelDistance(power: number): number {
