@@ -16,6 +16,12 @@ body {
   display: flex;
   justify-content: center;
   align-items: stretch;
+  /* Game UI: no on-screen text needs selecting. Prevents iOS Safari from
+     starting a text selection / showing the copy callout when tapping near
+     the fine-tune labels and Fire button. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 body.board-fullscreen-active {
