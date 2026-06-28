@@ -5,6 +5,7 @@ dist
 .env
 client/dist
 server/dist
+*.tsbuildinfo
 .render-node/
 yarn.lock
 pnpm-lock.yaml

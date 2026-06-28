@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Dash Dots">
+  <rect width="512" height="512" rx="96" fill="#0d1117" />
+  <circle cx="176" cy="256" r="64" fill="#38bdf8" />
+  <circle cx="356" cy="176" r="40" fill="#f97316" />
+  <circle cx="356" cy="336" r="40" fill="#f97316" />
+  <path d="M176 256 L356 176 M176 256 L356 336" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round" opacity="0.6" />
+</svg>

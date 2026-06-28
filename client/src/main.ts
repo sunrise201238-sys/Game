@@ -1,6 +1,7 @@
 import { DEFAULT_MAP_ID, MAPS, getMapById } from './config';
 import { GameEngine } from './engine';
 import { OnlineMatchClient } from './online';
+import { registerOfflineSupport } from './pwa';
 import { Renderer } from './renderer';
 import type { OnlineStatus } from '@slingshot/shared';
 import type { GameMode, GameState, MapDefinition, TeamId, UnitState, Vector } from './types';
@@ -2081,3 +2082,7 @@ function setActiveModeButton(mode: GameMode): void {
 
 setActiveModeButton(currentMode);
 updateFireControlUi();
+
+// Enable offline play: cache the app shell so VS Bot / Hotseat open without
+// waking the online server (online still connects on demand when you queue).
+registerOfflineSupport();

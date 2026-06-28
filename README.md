@@ -46,3 +46,26 @@ You can experience the slingshot combat loop in three distinct modes, all powere
 - **Online:** Queue through the WebSocket service for live PvP matches with reconnection support.
 
 Explore the client UI to launch matches, experiment with maps, and master the physics-driven mechanics that define Slingshot Strategy.
+
+## Offline Play (no server wake-up)
+
+The client is an installable PWA. A service worker (`client/public/sw.js`,
+precache list injected at build time by `client/scripts/inject-sw-precache.mjs`)
+caches the app shell and all built assets, so **Bot** and **Hotseat** load
+instantly from cache and never contact the server. This means a quick offline
+game does not wake a spun-down host.
+
+The server is only reached for **Online**, which connects lazily over a
+WebSocket the moment you queue for a match — service workers do not intercept
+`ws://`/`wss://`, so online play still wakes the host exactly when it's needed.
+After the first successful load (which must reach the server once to populate
+the cache), every later visit opens offline. Ship an update by deploying a new
+build: the content-hashed filenames produce a new cache version that refreshes
+on the next online visit.
+
+> If you prefer the page itself to load instantly even on a brand-new device or
+> before the very first visit, host the client as an always-on static site and
+> point Online at the server with the `VITE_MATCHMAKER_URL` build env var
+> (e.g. `VITE_MATCHMAKER_URL=https://your-server.onrender.com`). The service
+> worker above already removes the need for this in the common "returning
+> player" case.
