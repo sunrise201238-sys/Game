@@ -1951,7 +1951,10 @@ function updateUi(state: GameState): void {
     } else if (onlineStatus !== 'matched') {
       switch (onlineStatus) {
         case 'connecting':
-          phaseText = 'Connecting…';
+          // The free-tier host spins down when idle, so this wait is usually
+          // the server cold-starting — name it so a long pause reads as
+          // progress rather than the app being stuck.
+          phaseText = 'Booting the server…';
           break;
         case 'queued':
           phaseText = 'Searching for opponent…';
