@@ -309,7 +309,7 @@ main > * {
   height: var(--board-fullscreen-height, auto);
   max-width: none;
   aspect-ratio: auto;
-  transform: translate(-50%, -50%) rotate(90deg);
+  transform: translate(-50%, -50%) rotate(-90deg);
   transform-origin: center center;
 }
 

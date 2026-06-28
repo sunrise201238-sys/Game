@@ -42,9 +42,10 @@ const joystickPowDecButton = document.getElementById('joystick-pow-dec') as HTML
 const joystickPowIncButton = document.getElementById('joystick-pow-inc') as HTMLButtonElement;
 const ZOOM_STEP = 1.2;
 const DRAG_INPUT_MULTIPLIER = 1.35;
-// Rotating the landscape board into a portrait viewport. 90deg clockwise so the
-// board's top edge points to the right of the device held upright.
-const BOARD_ROTATION_DEG = 90;
+// Rotating the landscape board into a portrait viewport. 90deg counter-clockwise
+// so the friendly team (world's left side) sits at the bottom of an upright
+// device, with the opponent at the top.
+const BOARD_ROTATION_DEG = -90;
 // Joystick travel below this fraction of the pad radius is treated as "no aim".
 const JOYSTICK_DEADZONE = 0.08;
 // Once an aim is set, fine nudges can take power this low and still fire. The
@@ -1838,16 +1839,16 @@ function toWorldPointFromClient(clientX: number, clientY: number): Vector {
   let ratioX: number;
   let ratioY: number;
   if (boardRotated) {
-    // The canvas is CSS-rotated 90deg clockwise about its centre. Undo that to
-    // recover unrotated local coordinates. For a 90deg rotation the on-screen
-    // bounding box is (unrotatedHeight x unrotatedWidth), so unrotated width
-    // equals rect.height and unrotated height equals rect.width.
+    // The canvas is CSS-rotated 90deg counter-clockwise about its centre. Undo
+    // that to recover unrotated local coordinates. For a 90deg rotation the
+    // on-screen bounding box is (unrotatedHeight x unrotatedWidth), so unrotated
+    // width equals rect.height and unrotated height equals rect.width.
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
     const sx = clientX - centerX;
     const sy = clientY - centerY;
-    const localX = sy; // inverse of 90deg cw: localX = screenY
-    const localY = -sx; //                     localY = -screenX
+    const localX = -sy; // inverse of 90deg ccw: localX = -screenY
+    const localY = sx; //                        localY = screenX
     const unrotatedWidth = rect.height;
     const unrotatedHeight = rect.width;
     ratioX = (localX + unrotatedWidth / 2) / unrotatedWidth;
@@ -1878,10 +1879,10 @@ function worldToClient(world: Vector): { x: number; y: number } {
     const unrotatedHeight = rect.width;
     const localX = ratioX * unrotatedWidth - unrotatedWidth / 2;
     const localY = ratioY * unrotatedHeight - unrotatedHeight / 2;
-    // forward 90deg cw rotation: screenX = -localY, screenY = localX
+    // forward 90deg ccw rotation: screenX = localY, screenY = -localX
     return {
-      x: rect.left + rect.width / 2 - localY,
-      y: rect.top + rect.height / 2 + localX,
+      x: rect.left + rect.width / 2 + localY,
+      y: rect.top + rect.height / 2 - localX,
     };
   }
   return {
@@ -1900,8 +1901,8 @@ function clientDeltaToWorldDelta(deltaClientX: number, deltaClientY: number): Ve
   }
   const view = renderer.getViewSize();
   if (boardRotated) {
-    const localDX = deltaClientY;
-    const localDY = -deltaClientX;
+    const localDX = -deltaClientY;
+    const localDY = deltaClientX;
     const unrotatedWidth = rect.height;
     const unrotatedHeight = rect.width;
     return {
@@ -1921,7 +1922,7 @@ function rotateScreenVectorToWorld(vector: Vector): Vector {
   if (!boardRotated) {
     return { ...vector };
   }
-  return { x: vector.y, y: -vector.x };
+  return { x: -vector.y, y: vector.x };
 }
 
 function updateUi(state: GameState): void {
