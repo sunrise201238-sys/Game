@@ -40,10 +40,18 @@ const files = walk(distDir)
 // Precache list: every built file plus the bare navigation root.
 const precache = Array.from(new Set(['/', ...files])).sort();
 
-// Version derived from the (content-hashed) filenames — changes when assets do.
-const version =
-  'dash-dots-' +
-  createHash('sha256').update(files.sort().join('\n')).digest('hex').slice(0, 12);
+// Version derived from file CONTENTS (not just names). Vite content-hashes
+// JS/CSS filenames, but index.html and manifest.webmanifest have stable names,
+// so a change touching only those would not alter the file list. Hashing the
+// bytes guarantees any shell/manifest/icon edit produces a new version, which
+// busts the cache-first service worker for returning users.
+const versionHash = createHash('sha256');
+for (const rel of [...files].sort()) {
+  versionHash.update(rel);
+  versionHash.update('\0');
+  versionHash.update(readFileSync(join(distDir, rel)));
+}
+const version = 'dash-dots-' + versionHash.digest('hex').slice(0, 12);
 
 let sw = readFileSync(swPath, 'utf8');
 const before = sw;

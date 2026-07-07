@@ -3,7 +3,7 @@
   <!-- Blue dot + lower orange dot + connecting line, scaled up uniformly about
        the group's centre (254,284) and recentred on the canvas (256,256). The
        relative geometry/ratio of the kept parts is unchanged. -->
-  <g transform="translate(256 256) scale(1.35) translate(-254 -284)">
+  <g transform="translate(256 256) scale(1.30) translate(-254 -284)">
     <circle cx="176" cy="256" r="64" fill="#38bdf8" />
     <circle cx="356" cy="336" r="40" fill="#f97316" />
     <path d="M176 256 L356 336" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round" opacity="0.6" />
